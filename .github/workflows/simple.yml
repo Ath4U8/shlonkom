@@ -16,12 +16,13 @@ jobs:
         with:
           flutter-version: '3.22.0'
           channel: 'stable'
-      - name: Build APK Final
+      - name: Fix and Build
         run: |
+          cp lib/main.dart /tmp/my_main.dart
           if [ ! -f "android/app/build.gradle" ]; then
             flutter create . --platforms=android --org dev.shlonkom --project-name shlonkom --overwrite
           fi
-          cp lib/main.dart /tmp/my_main.dart 2>/dev/null || true
+          cp /tmp/my_main.dart lib/main.dart
           cat > pubspec.yaml << 'YAML'
           name: shlonkom
           description: Shlonkom Iraqi Chat App
@@ -43,12 +44,11 @@ jobs:
           flutter:
             uses-material-design: true
           YAML
-          cp /tmp/my_main.dart lib/main.dart 2>/dev/null || true
           sed -i "s/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/" android/app/build.gradle || true
           python3 << 'PY'
           import json
           with open('android/app/google-services.json') as f:
-              data=json.load(f); c=data['client'][0]; i=c['client_info']; a=c['api_key'][0]['current_key']; p=data['project_info']
+              d=json.load(f); c=d['client'][0]; i=c['client_info']; a=c['api_key'][0]['current_key']; p=d['project_info']
               open('lib/firebase_options.dart','w').write(f'''import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
           import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
           class DefaultFirebaseOptions {{
@@ -62,8 +62,7 @@ jobs:
           PY
           flutter pub get
           flutter build apk --debug
-      - name: Upload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: shlonkom-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
