@@ -26,8 +26,39 @@ jobs:
           sed -i "s/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/" android/app/build.gradle || true
           python3 << 'PY'
           import json
-          j=open('android/app/google-services.json'); d=json.load(j); c=d['client'][0]; o=c['client_info']; a=c['api_key'][0]['current_key']; p=d['project_info']
-          open('lib/firebase_options.dart','w').write(f"import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;\nimport 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;\nclass DefaultFirebaseOptions{{static FirebaseOptions get currentPlatform{{if(kIsWeb) throw UnsupportedError('web'); switch(defaultTargetPlatform){{case TargetPlatform.android: return android; default: throw UnsupportedError('no');}}}} static const FirebaseOptions android=FirebaseOptions(apiKey:'{a}',appId:'{o['mobilesdk_app_id']}',messagingSenderId:'{p['project_number']}',projectId:'{p['project_id']}',storageBucket:'{p['storage_bucket']}',);}}")
+          with open('android/app/google-services.json') as f:
+              data=json.load(f)
+              client=data['client'][0]
+              info=client['client_info']
+              api=client['api_key'][0]['current_key']
+              proj=data['project_info']
+              app_id=info['mobilesdk_app_id']
+              proj_num=proj['project_number']
+              proj_id=proj['project_id']
+              bucket=proj['storage_bucket']
+              code=f'''import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+          import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
+          class DefaultFirebaseOptions {{
+            static FirebaseOptions get currentPlatform {{
+              if (kIsWeb) throw UnsupportedError('web not supported');
+              switch (defaultTargetPlatform) {{
+                case TargetPlatform.android:
+                  return android;
+                default:
+                  throw UnsupportedError('not android');
+              }}
+            }}
+            static const FirebaseOptions android = FirebaseOptions(
+              apiKey: '{api}',
+              appId: '{app_id}',
+              messagingSenderId: '{proj_num}',
+              projectId: '{proj_id}',
+              storageBucket: '{bucket}',
+            );
+          }}
+          '''
+              open('lib/firebase_options.dart','w').write(code)
+              print("firebase_options.dart OK")
           PY
           flutter pub get
           flutter build apk --debug
