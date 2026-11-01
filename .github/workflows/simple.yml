@@ -19,10 +19,12 @@ jobs:
       - name: Build APK Keep Code
         run: |
           cp lib/main.dart /tmp/my_main.dart 2>/dev/null || true
+          cp pubspec.yaml /tmp/my_pubspec.yaml 2>/dev/null || true
           if [ ! -f "android/app/build.gradle" ]; then
             flutter create . --platforms=android --org dev.shlonkom --project-name shlonkom --overwrite
           fi
           cp /tmp/my_main.dart lib/main.dart 2>/dev/null || true
+          cp /tmp/my_pubspec.yaml pubspec.yaml 2>/dev/null || true
           sed -i "s/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/" android/app/build.gradle || true
           python3 << 'PY'
           import json
@@ -32,33 +34,26 @@ jobs:
               info=client['client_info']
               api=client['api_key'][0]['current_key']
               proj=data['project_info']
-              app_id=info['mobilesdk_app_id']
-              proj_num=proj['project_number']
-              proj_id=proj['project_id']
-              bucket=proj['storage_bucket']
               code=f'''import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
           import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;
           class DefaultFirebaseOptions {{
             static FirebaseOptions get currentPlatform {{
               if (kIsWeb) throw UnsupportedError('web not supported');
               switch (defaultTargetPlatform) {{
-                case TargetPlatform.android:
-                  return android;
-                default:
-                  throw UnsupportedError('not android');
+                case TargetPlatform.android: return android;
+                default: throw UnsupportedError('not android');
               }}
             }}
             static const FirebaseOptions android = FirebaseOptions(
               apiKey: '{api}',
-              appId: '{app_id}',
-              messagingSenderId: '{proj_num}',
-              projectId: '{proj_id}',
-              storageBucket: '{bucket}',
+              appId: '{info["mobilesdk_app_id"]}',
+              messagingSenderId: '{proj["project_number"]}',
+              projectId: '{proj["project_id"]}',
+              storageBucket: '{proj["storage_bucket"]}',
             );
           }}
           '''
               open('lib/firebase_options.dart','w').write(code)
-              print("firebase_options.dart OK")
           PY
           flutter pub get
           flutter build apk --debug
