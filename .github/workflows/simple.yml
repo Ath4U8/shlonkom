@@ -16,14 +16,21 @@ jobs:
         with:
           flutter-version: '3.22.0'
           channel: 'stable'
-      - name: Fix Android
+
+      - name: Fix - Remove google-services plugin completely
         run: |
-          if [ ! -f "android/build.gradle" ]; then
-            flutter create . --platforms=android --org dev.shlonkom --project-name shlonkom --overwrite
-          fi
+          # احذف كل اثر للـ plugin اللي يسبب الخطأ
+          sed -i "/google-services/d" android/build.gradle 2>/dev/null || true
+          sed -i "/google-services/d" android/app/build.gradle 2>/dev/null || true
+          sed -i "/com.google.gms/d" android/build.gradle 2>/dev/null || true
+          sed -i "/com.google.gms/d" android/app/build.gradle 2>/dev/null || true
+          
+          # اصلح minSdk
           sed -i "s/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/" android/app/build.gradle
-          grep -q "google-services" android/build.gradle || sed -i "s/dependencies {/dependencies {\n        classpath 'com.google.gms:google-services:4.4.1'/" android/build.gradle
-          grep -q "google-services" android/app/build.gradle || echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
+          sed -i "s/minSdk = flutter.minSdkVersion/minSdk = 21/" android/app/build.gradle 2>/dev/null || true
+          
+          echo "=== Cleaned build.gradle - No google-services plugin ==="
+
       - name: Firebase Options
         run: |
           python3 << 'PY'
@@ -31,10 +38,12 @@ jobs:
           f=open('android/app/google-services.json'); data=json.load(f); c=data['client'][0]; o=c['client_info']; a=c['api_key'][0]['current_key']; p=data['project_info']
           open('lib/firebase_options.dart','w').write(f"import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;\nimport 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, kIsWeb;\nclass DefaultFirebaseOptions {{static FirebaseOptions get currentPlatform {{if (kIsWeb) throw UnsupportedError('web'); switch (defaultTargetPlatform) {{case TargetPlatform.android: return android; default: throw UnsupportedError('no');}}}} static const FirebaseOptions android = FirebaseOptions(apiKey: '{a}', appId: '{o['mobilesdk_app_id']}', messagingSenderId: '{p['project_number']}', projectId: '{p['project_id']}', storageBucket: '{p['storage_bucket']}',);}}")
           PY
-      - name: Build
+
+      - name: Build APK
         run: |
           flutter pub get
           flutter build apk --debug
+
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
