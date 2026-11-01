@@ -17,20 +17,31 @@ jobs:
           channel: 'stable'
       - name: Build Shlonkom Firebase Real
         run: |
+          # حفظ google-services.json
+          if [ -f android/app/google-services.json ]; then cp android/app/google-services.json /tmp/g.json; echo "saved g.json"; fi
+          
+          flutter create . --platforms=android --org dev.shlonkom --project-name shlonkom --overwrite
+          
+          mkdir -p android/app
+          if [ -f /tmp/g.json ]; then cp /tmp/g.json android/app/google-services.json; echo "restored g.json"; fi
+          ls -lh android/app/google-services.json
+          
           python3 << 'PY'
           import pathlib
-          # Gradle fix
-          a=pathlib.Path('android/build.gradle').read_text()
-          if 'google-services' not in a:
-            a=a.replace('dependencies {','dependencies {\n        classpath "com.google.gms:google-services:4.4.0"')
-            pathlib.Path('android/build.gradle').write_text(a)
-          b=pathlib.Path('android/app/build.gradle').read_text()
-          if 'google-services' not in b:
-            b=b.replace("apply plugin: 'com.android.application'","apply plugin: 'com.android.application'\napply plugin: 'com.google.gms.google-services'")
-            pathlib.Path('android/app/build.gradle').write_text(b)
-          b=pathlib.Path('android/app/build.gradle').read_text().replace('minSdkVersion 19','minSdkVersion 21').replace('flutter.minSdkVersion','21')
-          pathlib.Path('android/app/build.gradle').write_text(b)
-          print("Gradle fixed")
+          p=pathlib.Path('android/build.gradle')
+          t=p.read_text()
+          if 'google-services' not in t:
+            t=t.replace('dependencies {','dependencies {\n        classpath "com.google.gms:google-services:4.4.0"')
+            p.write_text(t)
+          print("Fixed android/build.gradle")
+          p=pathlib.Path('android/app/build.gradle')
+          t=p.read_text()
+          if 'com.google.gms.google-services' not in t:
+            t=t.replace("apply plugin: 'com.android.application'","apply plugin: 'com.android.application'\napply plugin: 'com.google.gms.google-services'")
+            p.write_text(t)
+          print("Fixed app/build.gradle")
+          t=p.read_text().replace('minSdkVersion 19','minSdkVersion 21').replace('flutter.minSdkVersion','21').replace('minSdk 19','minSdk 21')
+          p.write_text(t)
           PY
 
           python3 << 'PY'
@@ -86,7 +97,7 @@ jobs:
             const Home({super.key});
             @override Widget build(BuildContext context){
               var uid=FirebaseAuth.instance.currentUser!.uid;
-              return Scaffold(appBar:AppBar(title:const Text('شلونكم'),backgroundColor:const Color(0xFF00C950),foregroundColor:Colors.white,actions:[IconButton(icon:const Icon(Icons.logout),onPressed:()=>FirebaseAuth.instance.signOut())]),body:Column(children:[StreamBuilder<DocumentSnapshot>(stream:FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),builder:(context,snap){ if(!snap.hasData) return const SizedBox(); var d=snap.data!.data() as Map<String,dynamic>?; if(d==null) return const SizedBox(); return Container(width:double.infinity,padding:const EdgeInsets.all(12),color:Colors.green.withOpacity(0.1),child:Text('كودك: @${d['username']}',style:const TextStyle(fontWeight:FontWeight.bold))); }),const Expanded(child:Center(child:Text('تم تسجيل الدخول ب Firebase الحقيقي!\nبعد ما ينجح البناء نضيف الدردشة',textAlign:TextAlign.center))) ]));
+              return Scaffold(appBar:AppBar(title:const Text('شلونكم'),backgroundColor:const Color(0xFF00C950),foregroundColor:Colors.white,actions:[IconButton(icon:const Icon(Icons.logout),onPressed:()=>FirebaseAuth.instance.signOut())]),body:Column(children:[StreamBuilder<DocumentSnapshot>(stream:FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),builder:(context,snap){ if(!snap.hasData) return const SizedBox(); var d=snap.data!.data() as Map<String,dynamic>?; if(d==null) return const SizedBox(); return Container(width:double.infinity,padding:const EdgeInsets.all(12),color:Colors.green.withOpacity(0.1),child:Text('كودك: @${d['username']}',style:const TextStyle(fontWeight:FontWeight.bold))); }),const Expanded(child:Center(child:Text('تم تسجيل الدخول ب Firebase الحقيقي!\nبعد ما ينجح نضيف الدردشة',textAlign:TextAlign.center))) ]));
             }
           }
           DART
