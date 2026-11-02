@@ -321,7 +321,12 @@ class _UsersListPageState extends State<UsersListPage> {
                   SizedBox(height: 8),
                   if (msg.isNotEmpty) Text(msg, style: TextStyle(color: Colors.red, fontSize: 12)),
                   if (found != null)
-                    Card(child: ListTile(title: Text("@${(found.data() as Map<String, dynamic>)['username']}"), subtitle: Text("رقم التعريف: ${(found.data() as Map<String, dynamic>)['shortId']}"))),
+                    Card(
+                      child: ListTile(
+                        title: Text("@${(found!.data() as Map<String, dynamic>)['username']}"),
+                        subtitle: Text("رقم التعريف: ${(found!.data() as Map<String, dynamic>)['shortId']}"),
+                      ),
+                    ),
                 ],
               ),
               actions: [
@@ -354,8 +359,8 @@ class _UsersListPageState extends State<UsersListPage> {
                     onPressed: () async {
                       var myUid = FirebaseAuth.instance.currentUser!.uid;
                       await FirebaseFirestore.instance.collection('users').doc(myUid).collection('contacts').doc(found!.id).set({
-                        'username': (found.data() as Map<String, dynamic>)['username'],
-                        'shortId': (found.data() as Map<String, dynamic>)['shortId'],
+                        'username': (found!.data() as Map<String, dynamic>)['username'],
+                        'shortId': (found!.data() as Map<String, dynamic>)['shortId'],
                         'addedAt': FieldValue.serverTimestamp(),
                       });
                       Navigator.pop(ctx);
