@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Firebase.initializeApp();
   runApp(ShlonkomApp());
 }
 
@@ -64,25 +63,16 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => error = "اكتب الايميل واسم المستخدم (3 حروف)");
       return;
     }
-    setState(() {
-      loading = true;
-      error = "";
-    });
+    setState(() { loading = true; error = ""; });
     try {
       var eQ = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: email).get();
       if (eQ.docs.isNotEmpty) {
-        setState(() {
-          error = "الايميل مسجل - سوي دخول";
-          loading = false;
-        });
+        setState(() { error = "الايميل مسجل - سوي دخول"; loading = false; });
         return;
       }
       var uQ = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: username).get();
       if (uQ.docs.isNotEmpty) {
-        setState(() {
-          error = "اسم المستخدم مأخوذ - ماكو تكرار";
-          loading = false;
-        });
+        setState(() { error = "اسم المستخدم مأخوذ - ماكو تكرار"; loading = false; });
         return;
       }
       var pass = genPass(username);
@@ -102,10 +92,7 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => error = "اكتب الايميل واسم المستخدم");
       return;
     }
-    setState(() {
-      loading = true;
-      error = "";
-    });
+    setState(() { loading = true; error = ""; });
     try {
       var pass = genPass(username);
       await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: pass);
@@ -113,18 +100,12 @@ class _LoginPageState extends State<LoginPage> {
       var doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
       if (!doc.exists) {
         await FirebaseAuth.instance.signOut();
-        setState(() {
-          error = "الحساب ما كامل - سجل من جديد";
-          loading = false;
-        });
+        setState(() { error = "الحساب ما كامل - سجل من جديد"; loading = false; });
         return;
       }
       if (doc.data()!['username'] != username) {
         await FirebaseAuth.instance.signOut();
-        setState(() {
-          error = "الايميل واسم المستخدم غير متطابقين";
-          loading = false;
-        });
+        setState(() { error = "الايميل واسم المستخدم غير متطابقين"; loading = false; });
         return;
       }
     } catch (e) {
@@ -227,23 +208,6 @@ class CreateAccountPage extends StatefulWidget {
 
 class _CreateAccountPageState extends State<CreateAccountPage> {
   bool loading = false;
-  String username = "";
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUsername();
-  }
-
-  Future<void> _loadUsername() async {
-    var user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      var email = user.email ?? '';
-      var prefix = email.split('@')[0];
-      setState(() { username = prefix; });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -258,12 +222,7 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
               SizedBox(height: 20),
               TextField(controller: TextEditingController(text: widget.email), readOnly: true, decoration: InputDecoration(labelText: "الايميل ثابت 🔒", filled: true, fillColor: Colors.grey[300], border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
               SizedBox(height: 12),
-              FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance.collection('users').doc(widget.uid).get(),
-                builder: (c, snap) {
-                  return TextField(readOnly: true, controller: TextEditingController(text: FirebaseAuth.instance.currentUser?.email?.split('@')[0] ?? ''), decoration: InputDecoration(labelText: "اسم المستخدم ثابت 🔒", prefixText: "@", filled: true, fillColor: Colors.grey[300], border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))));
-                },
-              ),
+              TextField(controller: TextEditingController(text: widget.email.split('@')[0]), readOnly: true, decoration: InputDecoration(labelText: "اسم المستخدم ثابت 🔒", prefixText: "@", filled: true, fillColor: Colors.grey[300], border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
               SizedBox(height: 25),
               ElevatedButton(
                 onPressed: loading ? null : () async {
@@ -395,8 +354,8 @@ class _UsersListPageState extends State<UsersListPage> {
                     onPressed: () async {
                       var myUid = FirebaseAuth.instance.currentUser!.uid;
                       await FirebaseFirestore.instance.collection('users').doc(myUid).collection('contacts').doc(found!.id).set({
-                        'username': (found!.data() as Map<String, dynamic>)['username'],
-                        'shortId': (found!.data() as Map<String, dynamic>)['shortId'],
+                        'username': (found.data() as Map<String, dynamic>)['username'],
+                        'shortId': (found.data() as Map<String, dynamic>)['shortId'],
                         'addedAt': FieldValue.serverTimestamp(),
                       });
                       Navigator.pop(ctx);
