@@ -40,39 +40,45 @@ class VerifyEmailPage extends StatefulWidget {
 
 class _VerifyEmailPageState extends State<VerifyEmailPage> {
   bool loading = false;
+  final userCtrl = TextEditingController();
+  @override
+  void initState() { super.initState(); userCtrl.text = widget.username; }
   @override
   Widget build(BuildContext context) {
     var email = FirebaseAuth.instance.currentUser!.email ?? '';
-    return Scaffold(backgroundColor: Color(0xFF0E7A3E), body: Center(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+    return Scaffold(backgroundColor: Color(0xFF0E7A3E), body: Center(child: Padding(padding: EdgeInsets.all(24), child: SingleChildScrollView(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Icon(Icons.mark_email_read, size: 90, color: Colors.white), SizedBox(height: 20),
       Text("تأكيد الايميل", style: TextStyle(fontSize: 32, color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'Amiri')),
       SizedBox(height: 12),
-      Text("دزينا رابط الى:\n$email\n\n1. افتح Gmail\n2. دوس الرابط الازرق\n3. ارجع ودوس تأكدت\n\nاذا وهمي ما يوصل!", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 14)),
+      Text("دزينا رابط الى:\n$email\nتم التأكيد بالايميل! هسه اكتب اسمك", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 14)),
+      SizedBox(height: 20),
+      TextField(controller: userCtrl, decoration: InputDecoration(hintText: "اسم المستخدم", prefixText: "@", filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
       SizedBox(height: 25),
       ElevatedButton(onPressed: loading ? null : () async {
         setState(() => loading = true);
         try {
-          await FirebaseAuth.instance.currentUser!.reload();
+          var user = FirebaseAuth.instance.currentUser!;
+          await user.reload();
+          await FirebaseAuth.instance.currentUser!.getIdToken(true);
           var freshUser = FirebaseAuth.instance.currentUser!;
           if (!freshUser.emailVerified) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("بعدك ما مأكد - افتح ايميلك")));
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("بعدك ما مأكد - افتح Gmail ودوس الرابط")));
             setState(() => loading = false); return;
           }
-          if (widget.username.isNotEmpty) {
-            await FirebaseFirestore.instance.collection('users').doc(freshUser.uid).set({
-              'username': widget.username.toLowerCase(),
-              'displayName': widget.displayName,
-              'createdAt': FieldValue.serverTimestamp(),
-              'status': 'متصل 🇮🇶'
-            }, SetOptions(merge: true));
-          }
-        } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+          var finalUsername = userCtrl.text.trim().toLowerCase();
+          if (finalUsername.isEmpty) finalUsername = email.split('@')[0];
+          await FirebaseFirestore.instance.collection('users').doc(freshUser.uid).set({
+            'username': finalUsername, 'displayName': finalUsername, 'email': email,
+            'createdAt': FieldValue.serverTimestamp(), 'status': 'متصل 🇮🇶'
+          }, SetOptions(merge: true));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("تم! حسابك صار رسمي")));
+        } catch (e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("خطأ: $e"))); }
         setState(() => loading = false);
       }, child: loading ? CircularProgressIndicator() : Text("تأكدت - سوي حسابي الرسمي", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 55), backgroundColor: Colors.white, foregroundColor: Color(0xFF0E7A3E))),
       SizedBox(height: 12),
       OutlinedButton(onPressed: () async { await FirebaseAuth.instance.currentUser!.sendEmailVerification(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("تم الارسال"))); }, child: Text("اعادة ارسال الرابط", style: TextStyle(color: Colors.white)), style: OutlinedButton.styleFrom(minimumSize: Size(double.infinity, 50), side: BorderSide(color: Colors.white))),
       SizedBox(height: 20), TextButton(onPressed: () => FirebaseAuth.instance.signOut(), child: Text("خروج", style: TextStyle(color: Colors.white54))),
-    ]))));
+    ]))))));
   }
 }
 
@@ -80,21 +86,17 @@ class LoginPage extends StatefulWidget { @override _LoginPageState createState()
 class _LoginPageState extends State<LoginPage> {
   final emailCtrl = TextEditingController(); final passCtrl = TextEditingController(); final usernameCtrl = TextEditingController();
   String error = ""; bool loading = false;
-
   Future<void> login() async {
     setState(() { loading = true; error = ""; });
     try { await FirebaseAuth.instance.signInWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim()); }
-    catch (e) { setState(() => error = "الايميل او كلمة المرور غلط"); }
+    catch (e) { setState(() => error = "الايميل او الباسورد غلط"); }
     setState(() => loading = false);
   }
-
   Future<void> register() async {
     var username = usernameCtrl.text.trim().toLowerCase();
     var display = usernameCtrl.text.trim();
     if (username.length < 3) { setState(() => error = "اسم المستخدم 3 حروف"); return; }
-    if (username.contains(" ")) { setState(() => error = "بدون مسافات"); return; }
-    if (!RegExp(r'^[a-z0-9_]+$').hasMatch(username)) { setState(() => error = "انكليزي وارقام و _ فقط"); return; }
-    if (emailCtrl.text.trim().isEmpty || passCtrl.text.trim().length < 6) { setState(() => error = "الايميل والباسورد مطلوبين (6 حروف)"); return; }
+    if (emailCtrl.text.trim().isEmpty || passCtrl.text.trim().length < 6) { setState(() => error = "الايميل والباسورد مطلوبين"); return; }
     setState(() { loading = true; error = ""; });
     try {
       var cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
@@ -103,7 +105,6 @@ class _LoginPageState extends State<LoginPage> {
     } catch (e) { setState(() => error = e.toString()); }
     setState(() => loading = false);
   }
-
   @override
   Widget build(BuildContext context) => Scaffold(backgroundColor: Color(0xFF0E7A3E), body: Padding(padding: EdgeInsets.all(20), child: SingleChildScrollView(child: Column(children: [
     SizedBox(height: 50), Text("🇮🇶", style: TextStyle(fontSize: 50)), SizedBox(height: 10),
