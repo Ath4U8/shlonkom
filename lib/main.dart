@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
 import 'firebase_options.dart';
 
 void main() async {
@@ -57,60 +53,41 @@ class _LoginPageState extends State<LoginPage> {
   String error = "";
   bool loading = false;
 
-  String genPass(String username) => "${username.toLowerCase()}_IQ_111111_shlonkom";
-
-  Future<String> getDeviceId() async {
-    var info = DeviceInfoPlugin();
-    if (Platform.isAndroid) {
-      var a = await info.androidInfo;
-      return a.id ?? 'unknown';
-    }
-    return 'ios';
-  }
-
-  Future<String> getIP() async {
-    try {
-      var r = await http.get(Uri.parse('https://api.ipify.org'));
-      return r.body;
-    } catch (e) {
-      return 'unknown';
-    }
+  String genPass(String username) {
+    return username.toLowerCase() + "_IQ_111111_shlonkom";
   }
 
   Future<void> register() async {
     var email = emailCtrl.text.trim().toLowerCase();
     var username = userCtrl.text.trim().toLowerCase();
     if (email.isEmpty || username.length < 3) {
-      setState(() => error = "اكتب الايميل واسم المستخدم");
+      setState(() => error = "اكتب الايميل واسم المستخدم (3 حروف)");
       return;
     }
-    setState(() { loading = true; error = ""; });
+    setState(() {
+      loading = true;
+      error = "";
+    });
     try {
-      var deviceId = await getDeviceId();
-      var devDoc = await FirebaseFirestore.instance.collection('devices').doc(deviceId).get();
-      if (devDoc.exists) {
-        setState(() { error = "هذا الجهاز بيه حساب! رقمه: ${devDoc.data()!['shortId']}"; loading = false; });
-        return;
-      }
       var eQ = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: email).get();
       if (eQ.docs.isNotEmpty) {
-        setState(() { error = "الايميل مسجل - سوي دخول"; loading = false; });
+        setState(() {
+          error = "الايميل مسجل - سوي دخول";
+          loading = false;
+        });
         return;
       }
       var uQ = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: username).get();
       if (uQ.docs.isNotEmpty) {
-        setState(() { error = "اسم المستخدم مأخوذ - ماكو تكرار"; loading = false; });
+        setState(() {
+          error = "اسم المستخدم مأخوذ - ماكو تكرار";
+          loading = false;
+        });
         return;
       }
       var pass = genPass(username);
       var cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: pass);
       await cred.user!.sendEmailVerification();
-      var ip = await getIP();
-      var prefs = await SharedPreferences.getInstance();
-      await prefs.setString('email', email);
-      await prefs.setString('username', username);
-      await prefs.setString('deviceId', deviceId);
-      await prefs.setString('ip', ip);
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => VerifyPage()));
     } catch (e) {
       setState(() => error = e.toString());
@@ -125,15 +102,29 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => error = "اكتب الايميل واسم المستخدم");
       return;
     }
-    setState(() { loading = true; error = ""; });
+    setState(() {
+      loading = true;
+      error = "";
+    });
     try {
       var pass = genPass(username);
       await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: pass);
       var uid = FirebaseAuth.instance.currentUser!.uid;
       var doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      if (!doc.exists || doc.data()!['username'] != username) {
+      if (!doc.exists) {
         await FirebaseAuth.instance.signOut();
-        setState(() { error = "الايميل واسم المستخدم غير متطابقين"; loading = false; });
+        setState(() {
+          error = "الحساب ما كامل - سجل من جديد";
+          loading = false;
+        });
+        return;
+      }
+      if (doc.data()!['username'] != username) {
+        await FirebaseAuth.instance.signOut();
+        setState(() {
+          error = "الايميل واسم المستخدم غير متطابقين";
+          loading = false;
+        });
         return;
       }
     } catch (e) {
@@ -164,7 +155,7 @@ class _LoginPageState extends State<LoginPage> {
               SizedBox(height: 15),
               ElevatedButton(onPressed: loading ? null : login, child: Text("دخول", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 55), backgroundColor: Colors.white, foregroundColor: Color(0xFF0E7A3E))),
               SizedBox(height: 12),
-              OutlinedButton(onPressed: loading ? null : register, child: Text("تسجيل جديد", style: TextStyle(fontSize: 18, color: Colors.white)), style: OutlinedButton.styleFrom(minimumSize: Size(double.infinity, 55), side: BorderSide(color: Colors.white, width: 2))),
+              OutlinedButton(onPressed: loading ? null : register, child: Text("تسجيل جديد - رابط مرة وحدة", style: TextStyle(fontSize: 14, color: Colors.white)), style: OutlinedButton.styleFrom(minimumSize: Size(double.infinity, 55), side: BorderSide(color: Colors.white, width: 2))),
               SizedBox(height: 40),
               Text("Designed by: Atheer Sami", style: TextStyle(color: Colors.white54, fontSize: 12)),
             ],
@@ -212,11 +203,11 @@ class _VerifyPageState extends State<VerifyPage> {
                   }
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => CreateAccountPage(email: f.email ?? '', uid: f.uid)), (r) => false);
                 },
-                child: loading ? CircularProgressIndicator() : Text("تأكدت"),
+                child: loading ? CircularProgressIndicator() : Text("تأكدت - انشئ حسابي"),
                 style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 55), backgroundColor: Colors.white, foregroundColor: Color(0xFF0E7A3E)),
               ),
               SizedBox(height: 12),
-              OutlinedButton(onPressed: () async { await FirebaseAuth.instance.currentUser!.sendEmailVerification(); }, child: Text("اعادة ارسال", style: TextStyle(color: Colors.white)), style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.white))),
+              OutlinedButton(onPressed: () async { await FirebaseAuth.instance.currentUser!.sendEmailVerification(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("تم الارسال"))); }, child: Text("اعادة ارسال", style: TextStyle(color: Colors.white)), style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.white))),
               TextButton(onPressed: () => FirebaseAuth.instance.signOut(), child: Text("خروج", style: TextStyle(color: Colors.white54))),
             ],
           ),
@@ -235,20 +226,22 @@ class CreateAccountPage extends StatefulWidget {
 }
 
 class _CreateAccountPageState extends State<CreateAccountPage> {
-  final userCtrl = TextEditingController();
-  final emailCtrl = TextEditingController();
   bool loading = false;
+  String username = "";
 
   @override
   void initState() {
     super.initState();
-    emailCtrl.text = widget.email;
-    _load();
+    _loadUsername();
   }
 
-  Future<void> _load() async {
-    var prefs = await SharedPreferences.getInstance();
-    setState(() { userCtrl.text = prefs.getString('username') ?? ''; });
+  Future<void> _loadUsername() async {
+    var user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      var email = user.email ?? '';
+      var prefix = email.split('@')[0];
+      setState(() { username = prefix; });
+    }
   }
 
   @override
@@ -261,18 +254,20 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text("انشاء حسابك", style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
+              Text("انشاء حسابك الرسمي", style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
               SizedBox(height: 20),
-              TextField(controller: emailCtrl, readOnly: true, decoration: InputDecoration(labelText: "الايميل ثابت 🔒", filled: true, fillColor: Colors.grey[300], border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+              TextField(controller: TextEditingController(text: widget.email), readOnly: true, decoration: InputDecoration(labelText: "الايميل ثابت 🔒", filled: true, fillColor: Colors.grey[300], border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
               SizedBox(height: 12),
-              TextField(controller: userCtrl, readOnly: true, decoration: InputDecoration(labelText: "اسم المستخدم ثابت 🔒", prefixText: "@", filled: true, fillColor: Colors.grey[300], border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+              FutureBuilder<DocumentSnapshot>(
+                future: FirebaseFirestore.instance.collection('users').doc(widget.uid).get(),
+                builder: (c, snap) {
+                  return TextField(readOnly: true, controller: TextEditingController(text: FirebaseAuth.instance.currentUser?.email?.split('@')[0] ?? ''), decoration: InputDecoration(labelText: "اسم المستخدم ثابت 🔒", prefixText: "@", filled: true, fillColor: Colors.grey[300], border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))));
+                },
+              ),
               SizedBox(height: 25),
               ElevatedButton(
                 onPressed: loading ? null : () async {
                   setState(() => loading = true);
-                  var prefs = await SharedPreferences.getInstance();
-                  var deviceId = prefs.getString('deviceId') ?? 'unknown';
-                  var ip = prefs.getString('ip') ?? 'unknown';
                   var counterRef = FirebaseFirestore.instance.collection('counters').doc('users');
                   var snap = await counterRef.get();
                   int newNumber = 111112;
@@ -285,24 +280,23 @@ class _CreateAccountPageState extends State<CreateAccountPage> {
                     newNumber = cur + 1;
                     await counterRef.update({'count': newNumber});
                   }
+                  var email = widget.email;
+                  var uname = email.split('@')[0].toLowerCase();
+                  var existing = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: uname).get();
+                  if (existing.docs.isNotEmpty) {
+                    uname = uname + newNumber.toString();
+                  }
                   await FirebaseFirestore.instance.collection('users').doc(widget.uid).set({
-                    'username': userCtrl.text.trim().toLowerCase(),
-                    'displayName': userCtrl.text.trim().toLowerCase(),
+                    'username': uname,
+                    'displayName': uname,
                     'email': widget.email,
-                    'shortId': newNumber,
-                    'deviceId': deviceId,
-                    'ip': ip,
-                    'createdAt': FieldValue.serverTimestamp(),
-                  });
-                  await FirebaseFirestore.instance.collection('devices').doc(deviceId).set({
-                    'uid': widget.uid,
                     'shortId': newNumber,
                     'createdAt': FieldValue.serverTimestamp(),
                   });
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => UsersListPage()), (r) => false);
                   setState(() => loading = false);
                 },
-                child: loading ? CircularProgressIndicator() : Text("انشاء حسابي ✅", style: TextStyle(fontWeight: FontWeight.bold)),
+                child: loading ? CircularProgressIndicator() : Text("تأكيد وانشاء حسابي ✅", style: TextStyle(fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(minimumSize: Size(double.infinity, 55), backgroundColor: Colors.white, foregroundColor: Color(0xFF0E7A3E)),
               ),
             ],
@@ -340,7 +334,10 @@ class _UsersListPageState extends State<UsersListPage> {
 
   Future<void> search() async {
     var v = searchCtrl.text.trim();
-    if (v.isEmpty) { setState(() { searchResults = []; }); return; }
+    if (v.isEmpty) {
+      setState(() { searchResults = []; });
+      return;
+    }
     int? id = int.tryParse(v);
     if (id == null) return;
     var q = await FirebaseFirestore.instance.collection('users').where('shortId', isEqualTo: id).get();
@@ -361,11 +358,11 @@ class _UsersListPageState extends State<UsersListPage> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(controller: addCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(hintText: "مثال: 111111", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                  TextField(controller: addCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(hintText: "مثال: 111111", labelText: "رقم التعريف", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
                   SizedBox(height: 8),
                   if (msg.isNotEmpty) Text(msg, style: TextStyle(color: Colors.red, fontSize: 12)),
                   if (found != null)
-                    Card(child: ListTile(title: Text("@${(found.data() as Map<String,dynamic>)['username']}"), subtitle: Text("رقم التعريف: ${(found.data() as Map<String,dynamic>)['shortId']}"))),
+                    Card(child: ListTile(title: Text("@${(found.data() as Map<String, dynamic>)['username']}"), subtitle: Text("رقم التعريف: ${(found.data() as Map<String, dynamic>)['shortId']}"))),
                 ],
               ),
               actions: [
@@ -374,32 +371,39 @@ class _UsersListPageState extends State<UsersListPage> {
                   onPressed: searching ? null : () async {
                     var val = addCtrl.text.trim();
                     int? id = int.tryParse(val);
-                    if (id == null) { setD(() { msg = "اكتب رقم"; }); return; }
+                    if (id == null) {
+                      setD(() { msg = "اكتب رقم"; });
+                      return;
+                    }
                     setD(() { searching = true; msg = ""; });
                     var q = await FirebaseFirestore.instance.collection('users').where('shortId', isEqualTo: id).get();
-                    if (q.docs.isEmpty) { setD(() { msg = "ما لقينا"; searching = false; found = null; }); }
-                    else {
+                    if (q.docs.isEmpty) {
+                      setD(() { msg = "ما لقينا"; searching = false; found = null; });
+                    } else {
                       var d = q.docs.first;
-                      if (d.id == FirebaseAuth.instance.currentUser!.uid) { setD(() { msg = "هذا انت!"; searching = false; }); }
-                      else { setD(() { found = d; searching = false; }); }
+                      if (d.id == FirebaseAuth.instance.currentUser!.uid) {
+                        setD(() { msg = "هذا انت!"; searching = false; });
+                      } else {
+                        setD(() { found = d; searching = false; });
+                      }
                     }
                   },
-                  child: searching ? CircularProgressIndicator() : Text("بحث"),
+                  child: searching ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text("بحث 🔍"),
                 ),
                 if (found != null)
                   ElevatedButton(
                     onPressed: () async {
                       var myUid = FirebaseAuth.instance.currentUser!.uid;
                       await FirebaseFirestore.instance.collection('users').doc(myUid).collection('contacts').doc(found!.id).set({
-                        'username': (found!.data() as Map<String,dynamic>)['username'],
-                        'shortId': (found!.data() as Map<String,dynamic>)['shortId'],
+                        'username': (found!.data() as Map<String, dynamic>)['username'],
+                        'shortId': (found!.data() as Map<String, dynamic>)['shortId'],
                         'addedAt': FieldValue.serverTimestamp(),
                       });
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("تمت الاضافة ✅")));
                       addCtrl.clear();
                     },
-                    child: Text("تثبيت كجهة اتصال"),
+                    child: Text("تثبيت كجهة اتصال ✅"),
                   ),
               ],
             );
@@ -421,13 +425,14 @@ class _UsersListPageState extends State<UsersListPage> {
             color: Colors.green[50],
             child: Column(
               children: [
-                if (myId != null) Container(padding: EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Color(0xFF0E7A3E))), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.badge, color: Color(0xFF0E7A3E)), SizedBox(width: 8), Text("رقم التعريف الشخصي: $myId", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0E7A3E)))])),
+                if (myId != null)
+                  Container(padding: EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Color(0xFF0E7A3E))), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.badge, color: Color(0xFF0E7A3E)), SizedBox(width: 8), Text("رقم التعريف الشخصي: $myId", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0E7A3E)))])),
                 SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(child: TextField(controller: searchCtrl, keyboardType: TextInputType.number, onSubmitted: (_) => search(), decoration: InputDecoration(hintText: "مثال: 111111", labelText: "ابحث برقم التعريف", prefixIcon: Icon(Icons.search), filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))))),
                     SizedBox(width: 8),
-                    ElevatedButton(onPressed: search, child: Text("بحث 🔍"), style: ElevatedButton.styleFrom(minimumSize: Size(90, 56), backgroundColor: Color(0xFF0E7A3E))),
+                    ElevatedButton(onPressed: search, child: Text("بحث 🔍"), style: ElevatedButton.styleFrom(minimumSize: Size(90, 56), backgroundColor: Color(0xFF0E7A3E), foregroundColor: Colors.white)),
                   ],
                 ),
               ],
@@ -439,7 +444,7 @@ class _UsersListPageState extends State<UsersListPage> {
                     var doc = searchResults[i];
                     if (doc.id == FirebaseAuth.instance.currentUser!.uid) return SizedBox();
                     var d = doc.data() as Map<String, dynamic>;
-                    return Card(margin: EdgeInsets.all(8), child: ListTile(title: Text("@${d['username']}"), subtitle: Text("رقم التعريف: ${d['shortId']}"), trailing: ElevatedButton(child: Text("دردشة"), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(otherUid: doc.id, otherName: d['username'], otherShortId: d['shortId']))))));
+                    return Card(margin: EdgeInsets.all(8), child: ListTile(title: Text("@${d['username']}"), subtitle: Text("رقم التعريف: ${d['shortId']} - لا يتكرر ✅"), trailing: ElevatedButton(child: Text("دردشة"), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(otherUid: doc.id, otherName: d['username'], otherShortId: d['shortId']))))));
                   })
                 : StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).collection('contacts').snapshots(), builder: (c, snap) {
                     if (snap.hasData && snap.data!.docs.isNotEmpty) {
@@ -469,8 +474,16 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final msgCtrl = TextEditingController();
-  String get chatId { var ids = [FirebaseAuth.instance.currentUser!.uid, widget.otherUid]..sort(); return ids.join("_"); }
-  void send(String t) async { if (t.trim().isEmpty) return; var txt = t.trim(); msgCtrl.clear(); await FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').add({'text': txt, 'uid': FirebaseAuth.instance.currentUser!.uid, 'time': FieldValue.serverTimestamp()}); }
+  String get chatId {
+    var ids = [FirebaseAuth.instance.currentUser!.uid, widget.otherUid]..sort();
+    return ids.join("_");
+  }
+  void send(String t) async {
+    if (t.trim().isEmpty) return;
+    var txt = t.trim();
+    msgCtrl.clear();
+    await FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').add({'text': txt, 'uid': FirebaseAuth.instance.currentUser!.uid, 'time': FieldValue.serverTimestamp()});
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
