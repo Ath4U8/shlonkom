@@ -12,7 +12,7 @@ void main() async {
     debugPrint('Firebase init error: $e');
   }
 
-  // ملء الشاشة بالكامل وإلغاء أي فراغ أبيض علوي أو سفلي
+  // ملء كامل الشاشة وإلغاء الفراغ الأبيض خلف أشرطة النظام
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -77,7 +77,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  // الانتقال المباشر للشاشة الرئيسية
+  // الانتقال للشاشة الرئيسية مباشرة
   void _goToHome(String name, String email) {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -103,17 +103,16 @@ class _AuthScreenState extends State<AuthScreen> {
         await FirebaseAuth.instance.signInAnonymously();
       }
 
-      // حفظ اختياري في فايرستور دون تعطيل التنقل
+      // حفظ بيانات المستخدم
       FirebaseFirestore.instance.collection('users').doc(email).set({
         'email': email,
         'name': name,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).catchError((_) {});
 
       _showMessage('تم التسجيل بنجاح! أهلاً بك $name');
       _goToHome(name, email);
     } catch (e) {
-      // في حال وجود أي عائق سحابي، يتم إدخال المستخدم مباشرة
       _goToHome(name, email);
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -155,7 +154,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  // استعادة الحساب
+  // نافذة استعادة حسابي
   void _showForgotPasswordDialog() {
     final TextEditingController resetEmailController = TextEditingController(text: _emailController.text);
 
@@ -173,7 +172,7 @@ class _AuthScreenState extends State<AuthScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'أدخل بريدك الإلكتروني المسجل لاسترجاع بيانات حسابك فوراً:',
+                'أدخل بريدك الإلكتروني المسجل لاسترجاع بياناتك:',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14),
               ),
@@ -214,14 +213,14 @@ class _AuthScreenState extends State<AuthScreen> {
                     final foundName = doc.data()?['name'] ?? 'مستخدم';
                     _emailController.text = email;
                     _nameController.text = foundName;
-                    _showMessage('تم استرجاع الحساب بنجاح باسم: $foundName');
+                    _showMessage('تم استرجاع الحساب باسم: $foundName');
                   } else {
                     _emailController.text = email;
-                    _showMessage('تم تعيين البريد: $email، يمكنك إكمال الدخول الآن');
+                    _showMessage('تم تثبيت بريدك، يرجى كتابة اسمك واضغط تسجيل جديد وتأكيد');
                   }
                 } catch (e) {
                   _emailController.text = email;
-                  _showMessage('تم اعتماد بريدك الإلكتروني بنجاح');
+                  _showMessage('تم تثبيت بريدك، يمكنك المتابعة الآن');
                 }
               },
               child: const Text('استعادة الآن', style: TextStyle(color: Colors.white)),
@@ -239,26 +238,19 @@ class _AuthScreenState extends State<AuthScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // الخلفية المصممة (محاولة تحميل الملفات المحلية أو رسم واجهة بديلة مطابقة)
+          // قراءة ملف الصورة الصحيح من assets/images/login_bg.png
           Image.asset(
-            'assets/background.png',
+            'assets/images/login_bg.png',
             fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
             errorBuilder: (_, __, ___) => Image.asset(
-              'assets/images/background.png',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF0A4729), Color(0xFF042414)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-              ),
+              'assets/images/app_icon.png',
+              fit: BoxFit.contain,
             ),
           ),
 
-          // واجهة الإدخال
+          // واجهة الحقول والأزرار
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
@@ -284,7 +276,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // زر دخول
+                  // زر الدخول
                   SizedBox(
                     width: double.infinity,
                     height: 52,
