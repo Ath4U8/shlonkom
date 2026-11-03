@@ -1,4 +1,3 @@
-.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -86,7 +85,6 @@ class _AutoLoginSplashState extends State<AutoLoginSplash> {
     const sixDaysMillis = 6 * 24 * 60 * 60 * 1000;
 
     if (savedEmail != null && savedUsername != null && savedPin != null) {
-      // فحص إذا ترك التطبيق أكثر من 6 أيام
       if (lastActiveMillis > 0 && (now - lastActiveMillis) > sixDaysMillis) {
         await prefs.remove('saved_email');
         await prefs.remove('saved_username');
@@ -103,7 +101,6 @@ class _AutoLoginSplashState extends State<AutoLoginSplash> {
         return;
       }
 
-      // تجديد توقيت آخر نشاط والدخول المباشر
       await prefs.setInt('last_active_time', now);
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -128,7 +125,8 @@ class _AutoLoginSplashState extends State<AutoLoginSplash> {
       );
     }
   }
-@override
+
+  @override
   Widget build(BuildContext context) {
     return const Scaffold(
       backgroundColor: Color(0xFF0F5132),
@@ -138,7 +136,6 @@ class _AutoLoginSplashState extends State<AutoLoginSplash> {
     );
   }
 }
-
 // -------------------------------------------------------------
 // 1. شاشة تسجيل جديد بالإيميل فقط (لأول مرة)
 // -------------------------------------------------------------
@@ -235,11 +232,11 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
                 hintText: 'name@example.com',
                 contentPadding: EdgeInsets.symmetric(vertical: 12),
                 enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF0F5132), width: 2)),
-focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF137547), width: 2.5)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF137547), width: 2.5)),
               ),
             ),
             const SizedBox(height: 15),
-            TextButton(
+TextButton(
               onPressed: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const ReturningLoginScreen()));
               },
@@ -335,7 +332,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
             context,
             MaterialPageRoute(
               builder: (_) => MainChatHomeScreen(myEmail: widget.email, myUsername: username, myPin: pin),
-),
+            ),
             (route) => false,
           );
         }
@@ -343,7 +340,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         if (mounted) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
+MaterialPageRoute(
               builder: (_) => SetupUserProfileScreen(email: widget.email),
             ),
           );
@@ -440,7 +437,8 @@ class _SetupUserProfileScreenState extends State<SetupUserProfileScreen> {
     super.initState();
     _generatedPin = (100000 + Random().nextInt(900000)).toString();
   }
-Future<void> _pickAvatar() async {
+
+  Future<void> _pickAvatar() async {
     final XFile? image = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 30);
     if (image != null) {
       final bytes = await File(image.path).readAsBytes();
@@ -449,8 +447,7 @@ Future<void> _pickAvatar() async {
       });
     }
   }
-
-  void _completeRegistration() async {
+void _completeRegistration() async {
     final fullName = _fullNameController.text.trim();
     final username = _usernameController.text.trim();
 
@@ -543,12 +540,12 @@ Future<void> _pickAvatar() async {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.green.shade300)),
-child: Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_generatedPin, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0F5132), letterSpacing: 2)),
                   const Text('رقم التعريف الشخصي (ثابت كالهاتف):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F5132))),
-                ],
+],
               ),
             ),
             const SizedBox(height: 20),
@@ -639,7 +636,8 @@ class _ReturningLoginScreenState extends State<ReturningLoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رقم التعريف الشخصي غير صحيح')));
         return;
       }
-final username = data['username'] ?? '';
+
+      final username = data['username'] ?? '';
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_email', email);
       await prefs.setString('saved_username', username);
@@ -649,7 +647,7 @@ final username = data['username'] ?? '';
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(
+MaterialPageRoute(
             builder: (_) => MainChatHomeScreen(myEmail: email, myUsername: username, myPin: pin),
           ),
           (route) => false,
@@ -662,7 +660,6 @@ final username = data['username'] ?? '';
     }
   }
 
-  // شاشة زر النسيان واسترجاع البيانات بـ OTP 6 أرقام
   void _openForgotDialog() {
     final TextEditingController recoverEmailController = TextEditingController();
     showDialog(
@@ -735,7 +732,7 @@ final username = data['username'] ?? '';
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('تسجيل الدخول', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold, fontSize: 18)),
-backgroundColor: Colors.white,
+        backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
@@ -746,7 +743,7 @@ backgroundColor: Colors.white,
           children: [
             const Text(
               'نظراً لمرور أكثر من 6 أيام على عدم فتح التطبيق، يرجى تأكيد الدخول ببريدك ورقم التعريف الشخصي:',
-              textAlign: TextAlign.center,
+textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
             const SizedBox(height: 30),
@@ -835,7 +832,8 @@ class _RecoveryOtpVerifyScreenState extends State<RecoveryOtpVerifyScreen> {
       );
     });
   }
-void _verifyRecoveryOtp() async {
+
+  void _verifyRecoveryOtp() async {
     final entered = _otpController.text.trim();
     if (entered != widget.sentOtp) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رمز التأكيد غير صحيح')));
@@ -845,8 +843,7 @@ void _verifyRecoveryOtp() async {
     final doc = await FirebaseFirestore.instance.collection('users').doc(widget.email).get();
     if (doc.exists) {
       final pin = (doc.data()?['pin'] ?? '').toString();
-
-      if (mounted) {
+if (mounted) {
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -935,7 +932,8 @@ class MainChatHomeScreen extends StatefulWidget {
 class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
   StreamSubscription? _callSubscription;
   StreamSubscription? _messagesNotificationSubscription;
-@override
+
+  @override
   void initState() {
     super.initState();
     _listenForCalls();
@@ -943,7 +941,6 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
     _touchActivity();
   }
 
-  // تحديث وقت النشاط باستمرار لضمان احتساب الـ 6 أيام بدقة
   void _touchActivity() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('last_active_time', DateTime.now().millisecondsSinceEpoch);
@@ -955,8 +952,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
     _messagesNotificationSubscription?.cancel();
     super.dispose();
   }
-
-  void _listenForIncomingMessages() {
+void _listenForIncomingMessages() {
     _messagesNotificationSubscription = FirebaseFirestore.instance
         .collectionGroup('messages')
         .where('targetPin', isEqualTo: widget.myPin)
@@ -1045,7 +1041,8 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
       ),
     );
   }
-void _showAddContactDialog() {
+
+  void _showAddContactDialog() {
     final TextEditingController searchPinController = TextEditingController();
     Map<String, dynamic>? foundUser;
     bool isSearching = false;
@@ -1056,7 +1053,7 @@ void _showAddContactDialog() {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: const Text('إضافة جهة اتصال', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F5132))),
             content: SingleChildScrollView(
               child: Column(
@@ -1118,7 +1115,7 @@ void _showAddContactDialog() {
                               } catch (e) {
                                 setDialogState(() {
                                   searchError = 'خطأ أثناء البحث';
-isSearching = false;
+                                  isSearching = false;
                                 });
                               }
                             },
@@ -1127,7 +1124,7 @@ isSearching = false;
                   if (searchError.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(searchError, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                  ],
+],
                   if (foundUser != null) ...[
                     const SizedBox(height: 16),
                     Container(
@@ -1202,7 +1199,7 @@ isSearching = false;
               icon: const Icon(Icons.logout, color: Colors.white),
               tooltip: 'تسجيل الخروج',
               onPressed: () async {
-final prefs = await SharedPreferences.getInstance();
+                final prefs = await SharedPreferences.getInstance();
                 await prefs.clear();
                 FirebaseAuth.instance.signOut();
                 Navigator.pushAndRemoveUntil(
@@ -1212,7 +1209,7 @@ final prefs = await SharedPreferences.getInstance();
                 );
               },
             )
-          ],
+],
         ),
         body: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('users').doc(widget.myEmail).collection('contacts').snapshots(),
@@ -1271,15 +1268,15 @@ final prefs = await SharedPreferences.getInstance();
                       title: Text(friendName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       subtitle: Text('رقم التعريف: $friendPin', style: const TextStyle(color: Color(0xFF0F5132))),
                       trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                        mainAxisSize:间隔: MainAxisSize.min,
                         children: [
                           if (unreadCount > 0)
-Container(
+                            Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(12)),
                               child: const Text('رسالة جديدة', style: TextStyle(color: Colors.white, fontSize: 11)),
                             ),
-                          const SizedBox(width: 8),
+const SizedBox(width: 8),
                           const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                         ],
                       ),
@@ -1396,14 +1393,14 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       'timestamp': FieldValue.serverTimestamp(),
     });
   }
-Future<void> _pickAndSendImage() async {
+
+  Future<void> _pickAndSendImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 35);
     if (image == null) return;
 
     final bytes = await File(image.path).readAsBytes();
     final base64String = base64Encode(bytes);
-
-    FirebaseFirestore.instance.collection('chats').doc(_chatId).collection('messages').add({
+FirebaseFirestore.instance.collection('chats').doc(_chatId).collection('messages').add({
       'sender': widget.myUsername,
       'senderPin': widget.myPin,
       'targetPin': widget.friendPin,
@@ -1500,7 +1497,8 @@ Future<void> _pickAndSendImage() async {
       ),
     );
   }
-@override
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -1508,10 +1506,9 @@ Future<void> _pickAndSendImage() async {
         foregroundColor: Colors.white,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
+children: [
             Text(widget.friendUsername, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
             Text('رقم التعريف: ${widget.friendPin}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
-            // السمايل الأخضر التفاعلي (يضحك أو ينام)
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('chats')
@@ -1559,7 +1556,12 @@ Future<void> _pickAndSendImage() async {
         children: [
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('chats').doc(_chatId).collection('messages').orderBy('timestamp', descending: true).snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('chats')
+                  .doc(_chatId)
+                  .collection('messages')
+                  .orderBy('timestamp', descending: true)
+                  .snapshots(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 final docs = snapshot.data!.docs;
@@ -1583,10 +1585,10 @@ Future<void> _pickAndSendImage() async {
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         padding: const EdgeInsets.all(10),
-constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
                         decoration: BoxDecoration(
                           color: isMe ? const Color(0xFF137547) : Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(15),
+borderRadius: BorderRadius.circular(15),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
@@ -1674,7 +1676,7 @@ constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
         ],
       );
     } else if (type == 'file') {
-return Row(
+      return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.insert_drive_file, color: textColor),
@@ -1689,7 +1691,6 @@ return Row(
     return Text(msg['content'] ?? '', style: TextStyle(color: textColor, fontSize: 15));
   }
 }
-
 // -------------------------------------------------------------
 // 7. شاشات المكالمات
 // -------------------------------------------------------------
@@ -1797,7 +1798,8 @@ class _ActiveCallUIState extends State<ActiveCallUI> {
       }
     });
   }
-@override
+
+  @override
   void dispose() {
     _sub?.cancel();
     super.dispose();
@@ -1810,7 +1812,7 @@ class _ActiveCallUIState extends State<ActiveCallUI> {
       body: SafeArea(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
+children: [
             Padding(
               padding: const EdgeInsets.only(top: 50.0),
               child: Column(
