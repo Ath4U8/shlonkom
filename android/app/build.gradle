@@ -1,67 +1,86 @@
-plugins {
-    id "com.android.application"
-    id "kotlin-android"
-    id "dev.flutter.flutter-gradle-plugin"
-    id "com.google.gms.google-services"
-}
+Running Gradle task 'assembleRelease'...                        
+Warning: The plugin flutter_plugin_android_lifecycle requires Android SDK version 35 or higher.
+For more information about build configuration, see https://flutter.dev/to/review-gradle-config.
+Warning: The plugin flutter_webrtc requires Android SDK version 36 or higher.
+For more information about build configuration, see https://flutter.dev/to/review-gradle-config.
+Your project is configured to compile against Android SDK 34, but the following plugin(s) require to be compiled against a higher Android SDK version:
+- flutter_plugin_android_lifecycle compiles against Android SDK 35
+- flutter_webrtc compiles against Android SDK 36
+Fix this issue by compiling against the highest Android SDK version (they are backward compatible).
+Add the following to /home/runner/work/shlonkom/shlonkom/android/app/build.gradle:
 
-def localProperties = new Properties()
-def localPropertiesFile = rootProject.file('local.properties')
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.withReader('UTF-8') { reader ->
-        localProperties.load(reader)
-    }
-}
-
-def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
-if (flutterVersionCode == null) {
-    flutterVersionCode = '1'
-}
-
-def flutterVersionName = localProperties.getProperty('flutter.versionName')
-if (flutterVersionName == null) {
-    flutterVersionName = '1.0'
-}
-
-android {
-    namespace "dev.shlonkom.shlonkom"
-    compileSdkVersion flutter.compileSdkVersion
-    ndkVersion flutter.ndkVersion
-
-    compileOptions {
-        coreLibraryDesugaringEnabled true
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+    android {
+        compileSdk = 36
+        ...
     }
 
-    kotlinOptions {
-        jvmTarget = '1.8'
+Your project is configured with Android NDK 23.1.7779620, but the following plugin(s) depend on a different Android NDK version:
+- cloud_firestore requires Android NDK 27.0.12077973
+- file_picker requires Android NDK 27.0.12077973
+- firebase_auth requires Android NDK 27.0.12077973
+- firebase_core requires Android NDK 27.0.12077973
+- firebase_messaging requires Android NDK 27.0.12077973
+- flutter_local_notifications requires Android NDK 27.0.12077973
+- flutter_plugin_android_lifecycle requires Android NDK 27.0.12077973
+- flutter_webrtc requires Android NDK 27.0.12077973
+- image_picker_android requires Android NDK 27.0.12077973
+- path_provider_android requires Android NDK 27.0.12077973
+- permission_handler_android requires Android NDK 27.0.12077973
+- shared_preferences_android requires Android NDK 27.0.12077973
+Fix this issue by using the highest Android NDK version (they are backward compatible).
+Add the following to /home/runner/work/shlonkom/shlonkom/android/app/build.gradle:
+
+    android {
+        ndkVersion = "27.0.12077973"
+        ...
     }
 
-    sourceSets {
-        main.java.srcDirs += 'src/main/kotlin'
-    }
+Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 4116 bytes (99.7% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+/home/runner/.pub-cache/hosted/pub.dev/flutter_webrtc-1.6.3/android/src/main/java/com/cloudwebrtc/webrtc/SurfaceTextureRenderer.java:149: error: <anonymous com.cloudwebrtc.webrtc.SurfaceTextureRenderer$1> is not abstract and does not override abstract method onSurfaceDestroyed() in Callback
+            new TextureRegistry.SurfaceProducer.Callback() {
+                                                           ^
+/home/runner/.pub-cache/hosted/pub.dev/flutter_webrtc-1.6.3/android/src/main/java/com/cloudwebrtc/webrtc/SurfaceTextureRenderer.java:150: error: method does not override or implement a method from a supertype
+              @Override
+              ^
+/home/runner/.pub-cache/hosted/pub.dev/flutter_webrtc-1.6.3/android/src/main/java/com/cloudwebrtc/webrtc/SurfaceTextureRenderer.java:155: error: method does not override or implement a method from a supertype
+              @Override
+              ^
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+3 errors
 
-    defaultConfig {
-        applicationId "dev.shlonkom.shlonkom"
-        minSdkVersion 23
-        targetSdkVersion flutter.targetSdkVersion
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
-        multiDexEnabled true
-    }
+FAILURE: Build failed with an exception.
 
-    buildTypes {
-        release {
-            signingConfig signingConfigs.debug
-        }
-    }
-}
+* What went wrong:
+Execution failed for task ':flutter_webrtc:compileReleaseJavaWithJavac'.
+> Compilation failed; see the compiler output below.
+  Note: Recompile with -Xlint:deprecation for details.
+  /home/runner/.pub-cache/hosted/pub.dev/flutter_webrtc-1.6.3/android/src/main/java/com/cloudwebrtc/webrtc/SurfaceTextureRenderer.java:149: error: <anonymous com.cloudwebrtc.webrtc.SurfaceTextureRenderer$1> is not abstract and does not override abstract method onSurfaceDestroyed() in Callback
+              new TextureRegistry.SurfaceProducer.Callback() {
+                                                             ^
+  Note: Recompile with -Xlint:unchecked for details.
+  Note: Some input files use or override a deprecated API.
+  /home/runner/.pub-cache/hosted/pub.dev/flutter_webrtc-1.6.3/android/src/main/java/com/cloudwebrtc/webrtc/SurfaceTextureRenderer.java:150: error: method does not override or implement a method from a supertype
+                @Override
+                ^
+  /home/runner/.pub-cache/hosted/pub.dev/flutter_webrtc-1.6.3/android/src/main/java/com/cloudwebrtc/webrtc/SurfaceTextureRenderer.java:155: error: method does not override or implement a method from a supertype
+                @Override
+                ^
+  Note: Some input files use unchecked or unsafe operations.
+  3 errors
 
-flutter {
-    source '../..'
-}
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights.
 
-dependencies {
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
-}
+BUILD FAILED in 3m 50s
+Running Gradle task 'assembleRelease'...                          231.0s
+Gradle task assembleRelease failed with exit code 1
+Error: Process completed with exit code 1.
+0s
+0s
+0s
