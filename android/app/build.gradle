@@ -24,8 +24,8 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "dev.shlonkom.shlonkom"
-    compileSdk flutter.compileSdkVersion
+    namespace "com.example.shlonkom"
+    compileSdkVersion 34
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -42,9 +42,9 @@ android {
     }
 
     defaultConfig {
-        applicationId "dev.shlonkom.shlonkom"
-        minSdkVersion 23
-        targetSdkVersion flutter.targetSdkVersion
+        applicationId "com.example.shlonkom"
+        minSdkVersion 21
+        targetSdkVersion 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
@@ -53,6 +53,8 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
         }
     }
 }
@@ -62,5 +64,5 @@ flutter {
 }
 
 dependencies {
-    implementation platform('com.google.firebase:firebase-bom:33.5.1')
+    implementation platform('com.google.firebase:firebase-bom:33.1.2')
 }
