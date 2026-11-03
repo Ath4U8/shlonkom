@@ -24,12 +24,11 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "dev.shlonkom.shlonkom"
-    compileSdkVersion flutter.compileSdkVersion
-    ndkVersion "27.0.12077973"
+    namespace "com.example.shlonkom"
+    compileSdk 35
+    ndkVersion flutter.ndkVersion
 
     compileOptions {
-        coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
@@ -43,9 +42,9 @@ android {
     }
 
     defaultConfig {
-        applicationId "dev.shlonkom.shlonkom"
-        minSdkVersion 23
-        targetSdkVersion flutter.targetSdkVersion
+        applicationId "com.example.shlonkom"
+        minSdkVersion 21
+        targetSdkVersion 35
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
@@ -54,6 +53,8 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
         }
     }
 }
@@ -63,5 +64,6 @@ flutter {
 }
 
 dependencies {
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+    implementation platform('com.google.firebase:firebase-bom:33.5.1')
+    implementation 'androidx.multidex:multidex:2.0.1'
 }
