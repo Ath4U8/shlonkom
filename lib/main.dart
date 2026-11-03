@@ -1,10 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,15 +54,17 @@ class _AuthWrapperState extends State<AuthWrapper> {
   Future<void> _checkCurrentUser() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      if (doc.exists) {
-        setState(() {
-          _currentUser = user;
-          _userData = doc.data();
-          _isLoading = false;
-        });
-        return;
-      }
+      try {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (doc.exists) {
+          setState(() {
+            _currentUser = user;
+            _userData = doc.data();
+            _isLoading = false;
+          });
+          return;
+        }
+      } catch (_) {}
     }
     setState(() {
       _currentUser = null;
@@ -123,19 +125,22 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // جلب عنوان IP لمنع تكرار إنشاء الحسابات
+  // جلب عنوان IP عبر مكتبة HttpClient المدمجة بدون حزم خارجية
   Future<String?> _getDeviceIp() async {
     try {
-      final res = await http.get(Uri.parse('https://api.ipify.org?format=json')).timeout(const Duration(seconds: 5));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 4);
+      final request = await client.getUrl(Uri.parse('https://api.ipify.org?format=json'));
+      final response = await request.close();
+      if (response.statusCode == 200) {
+        final body = await response.transform(utf8.decoder).join();
+        final data = jsonDecode(body);
         return data['ip'];
       }
     } catch (_) {}
     return null;
   }
 
-  // توليد رقم تعريف شخصي PIN فريد من 6 أرقام
   Future<String> _generateUniquePin() async {
     final random = Random();
     while (true) {
@@ -145,7 +150,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // تسجيل الدخول (بريد إلكتروني + اسم مستخدم)
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim().toLowerCase();
     final username = _usernameController.text.trim();
@@ -171,13 +175,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final userData = query.docs.first.data();
-      // تسجيل دخول مجهول أو استعادة الجلسة في Firebase Auth لربط الصلاحيات
-      UserCredential userCred;
-      if (FirebaseAuth.instance.currentUser != null) {
-        userCred = await FirebaseAuth.instance.signInAnonymously();
-      } else {
-        userCred = await FirebaseAuth.instance.signInAnonymously();
-      }
+      final userCred = await FirebaseAuth.instance.signInAnonymously();
       widget.onLoginSuccess(userCred.user!, userData);
     } catch (e) {
       _showNotice('حدث خطأ أثناء تسجيل الدخول: $e');
@@ -186,7 +184,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // إنشاء حساب جديد مع التحقق من الـ IP وإرسال رابط التفعيل
   Future<void> _handleRegister() async {
     final email = _emailController.text.trim().toLowerCase();
     final username = _usernameController.text.trim();
@@ -203,7 +200,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
     try {
-      // 1. فحص تكرار اسم المستخدم
       final userQuery = await FirebaseFirestore.instance
           .collection('users')
           .where('username', isEqualTo: username)
@@ -216,7 +212,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // 2. فحص تكرار البريد
       final emailQuery = await FirebaseFirestore.instance
           .collection('users')
           .where('email', isEqualTo: email)
@@ -229,7 +224,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // 3. فحص القيود على الحسابات عبر IP الهاتف
       final currentIp = await _getDeviceIp();
       if (currentIp != null) {
         final ipCheck = await FirebaseFirestore.instance
@@ -245,25 +239,6 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
 
-      // 4. إرسال رابط تأكيد البريد الإلكتروني
-      final actionCodeSettings = ActionCodeSettings(
-        url: 'https://shlonkom.page.link/finishSignUp?email=$email',
-        handleCodeInApp: true,
-        androidPackageName: 'dev.shlonkom.shlonkom',
-        androidInstallApp: true,
-        androidMinimumVersion: '21',
-      );
-
-      try {
-        await FirebaseAuth.instance.sendSignInLinkToEmail(
-          email: email,
-          actionCodeSettings: actionCodeSettings,
-        );
-      } catch (_) {
-        // في حال عدم اكتمال إعداد النطاق الخارجي للديناميك لينك يكتمل التسجيل مباشرة
-      }
-
-      // 5. توليد رقم التعريف الشخصي PIN وتثبيت الحساب
       final pin = await _generateUniquePin();
       final userCred = await FirebaseAuth.instance.signInAnonymously();
 
@@ -279,7 +254,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).set(newUserData);
 
-      _showNotice('تم تأكيد وإنشاء الحساب! رقمك الشخصي هو: $pin', isError: false);
+      _showNotice('تم إنشاء الحساب! رقم التعريف الخاص بك: $pin', isError: false);
       widget.onLoginSuccess(userCred.user!, newUserData);
     } catch (e) {
       _showNotice('تعذر إكمال التسجيل: $e');
@@ -306,7 +281,6 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 children: [
                   SizedBox(height: MediaQuery.of(context).size.height * 0.53),
-                  // حقل البريد الإلكتروني
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.92),
@@ -329,7 +303,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // حقل اسم المستخدم
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.92),
@@ -351,7 +324,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  // زر دخول
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -383,7 +355,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  // زر تسجيل جديد
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -416,7 +387,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// الشاشة الرئيسية: جهات الاتصال، الرقم الشخصي، وإضافة جهة اتصال عبر PIN
 class HomeScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
   final VoidCallback onLogout;
@@ -433,16 +403,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadContacts();
+    _contacts = widget.userData['contacts'] ?? [];
   }
 
-  void _loadContacts() {
-    setState(() {
-      _contacts = widget.userData['contacts'] ?? [];
-    });
-  }
-
-  // إضافة جهة اتصال بالبحث عن الرقم التعريفي PIN
   void _showAddContactDialog() {
     showDialog(
       context: context,
@@ -452,7 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('أدخل رقم التعريف الشخصي (PIN) للمشترك:', textAlign: TextAlign.center),
+            const Text('أدخل رقم التعريف الشخصي (PIN):', textAlign: TextAlign.center),
             const SizedBox(height: 12),
             TextField(
               controller: _pinSearchController,
@@ -504,7 +467,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   'uid': res.docs.first.id,
                 };
 
-                // تحديث القائمة في Firestore
                 await FirebaseFirestore.instance.collection('users').doc(widget.userData['uid']).update({
                   'contacts': FieldValue.arrayUnion([contactEntry])
                 });
@@ -580,9 +542,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: Text(contact['username'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('PIN: ${contact['pin']}'),
                   trailing: const Icon(Icons.chat_bubble_outline, color: Color(0xFF0F7A3E)),
-                  onTap: () {
-                    // فتح شاشة الدردشة
-                  },
+                  onTap: () {},
                 );
               },
             ),
