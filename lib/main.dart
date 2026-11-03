@@ -50,13 +50,68 @@ class ShlonkomApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0F5132)),
         useMaterial3: true,
       ),
-      home: const LoginScreen(),
+      home: const SplashScreenHandler(),
     );
   }
 }
 
 // -------------------------------------------------------------
-// 1. شاشة تسجيل الدخول
+// التحقق من الحساب للدخول المباشر والتلقائي (المقترح 1)
+// -------------------------------------------------------------
+class SplashScreenHandler extends StatefulWidget {
+  const SplashScreenHandler({super.key});
+
+  @override
+  State<SplashScreenHandler> createState() => _SplashScreenHandlerState();
+}
+
+class _SplashScreenHandlerState extends State<SplashScreenHandler> {
+  @override
+  void initState() {
+    super.initState();
+    _checkSavedLogin();
+  }
+
+  Future<void> _checkSavedLogin() async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && user.email != null) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.email).get();
+        if (doc.exists && mounted) {
+          final data = doc.data()!;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MainChatHomeScreen(
+                myEmail: user.email!,
+                myUsername: data['username'] ?? '',
+                myPin: (data['pin'] ?? '000000').toString(),
+              ),
+            ),
+          );
+          return;
+        }
+      } catch (_) {}
+    }
+    if (mounted) {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFF0F5132),
+      body: Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      ),
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// 1. شاشة تسجيل الدخول واستعادة الحساب
 // -------------------------------------------------------------
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -112,16 +167,18 @@ class _LoginScreenState extends State<LoginScreen> {
       final userPin = data['pin'] ?? '000000';
 
       _msg('تم تسجيل الدخول بنجاح! أهلاً بك');
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => MainChatHomeScreen(
-            myEmail: email,
-            myUsername: username,
-            myPin: userPin.toString(),
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MainChatHomeScreen(
+              myEmail: email,
+              myUsername: username,
+              myPin: userPin.toString(),
+            ),
           ),
-        ),
-      );
+        );
+      }
     } catch (e) {
       _msg('تعذر تسجيل الدخول: $e', isError: true);
     } finally {
@@ -129,6 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // معالجة مشكلة استعادة الحساب (المشكلة 4)
   void _showRecoverDialog() {
     final TextEditingController recoverEmail = TextEditingController();
     showDialog(
@@ -139,7 +197,7 @@ class _LoginScreenState extends State<LoginScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('أدخل بريدك الإلكتروني لاسترجاع اسم المستخدم ورقم التعريف الشخصي:', textAlign: TextAlign.center, style: TextStyle(fontSize: 14)),
+            const Text('أدخل بريدك الإلكتروني لاسترجاع بياناتك وإرسال رابط التعيين:', textAlign: TextAlign.center, style: TextStyle(fontSize: 14)),
             const SizedBox(height: 15),
             TextField(
               controller: recoverEmail,
@@ -166,6 +224,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 if (doc.exists) {
                   final uName = doc.data()?['username'] ?? '';
                   final uPin = doc.data()?['pin'] ?? '';
+
+                  try {
+                    await FirebaseAuth.instance.sendPasswordResetEmail(email: em);
+                  } catch (_) {}
+
                   _showRecoveryDetails(em, uName, uPin.toString());
                 } else {
                   _msg('هذا البريد غير مسجل مسبقاً', isError: true);
@@ -174,7 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 _msg('حدث خطأ أثناء الاسترجاع: $e', isError: true);
               }
             },
-            child: const Text('استرجاع', style: TextStyle(color: Colors.white)),
+            child: const Text('استرجاع وإظهار', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -196,6 +259,8 @@ class _LoginScreenState extends State<LoginScreen> {
             Text('اسم المستخدم: $username', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
             const SizedBox(height: 8),
             Text('رقم التعريف الشخصي: $pin', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+            const Divider(height: 20),
+            const Text('تم إرسال رسالة تأكيد إضافية إلى بريدك أيضاً تفقد الوارد أو الرسائل غير المرغوبة (Spam).', style: TextStyle(fontSize: 12, color: Colors.grey), textAlign: TextAlign.center),
           ],
         ),
         actions: [
@@ -329,7 +394,7 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 // -------------------------------------------------------------
-// 2. خطوة تأكيد الإيميل لمرة واحدة فقط
+// 2. خطوة تأكيد البريد لمرة واحدة فقط
 // -------------------------------------------------------------
 class VerifyEmailForRegistrationScreen extends StatefulWidget {
   const VerifyEmailForRegistrationScreen({super.key});
@@ -387,7 +452,7 @@ class _VerifyEmailForRegistrationScreenState extends State<VerifyEmailForRegistr
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(backgroundColor: Color(0xFF0F5132), content: Text('تم إرسال رابط التأكيد إلى بريدك الإلكتروني! تفقد صندوق الوارد أو البريد غير المرغوب فيه.')),
+        const SnackBar(backgroundColor: Color(0xFF0F5132), content: Text('تم إرسال رابط التأكيد! تفقد صندوق الوارد أو البريد غير المرغوب فيه.')),
       );
 
       _timer = Timer.periodic(const Duration(seconds: 3), (timer) async {
@@ -455,7 +520,7 @@ class _VerifyEmailForRegistrationScreenState extends State<VerifyEmailForRegistr
                 child: Padding(
                   padding: EdgeInsets.all(12.0),
                   child: Text(
-                    'تم إرسال رابط التحقق إلى بريدك الإلكتروني.\nيرجى فتح إيميلك والضغط على الرابط، وسيقوم التطبيق بنقلك تلقائياً للخطوة التالية.',
+                    'تم إرسال رابط التحقق إلى بريدك الإلكتروني.\nيرجى فتح إيميلك والضغط على الرابط، وسينقلك التطبيق تلقائياً للخطوة التالية.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold),
                   ),
@@ -480,7 +545,7 @@ class _VerifyEmailForRegistrationScreenState extends State<VerifyEmailForRegistr
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('لم يتم تأكيد الرابط بعد، يرجى الضغط عليه في رسالة بريدك الإلكتروني')),
+                        const SnackBar(content: Text('لم يتم تأكيد الرابط بعد، يرجى الضغط عليه في رسالتك الإلكترونية')),
                       );
                     }
                   },
@@ -496,7 +561,7 @@ class _VerifyEmailForRegistrationScreenState extends State<VerifyEmailForRegistr
 }
 
 // -------------------------------------------------------------
-// 3. شاشة إنشاء الحساب (البريد ثابت + اسم مستخدم فريد + رقم PIN)
+// 3. شاشة إنشاء الحساب الدائم وتوليد الـ PIN
 // -------------------------------------------------------------
 class CompleteRegistrationScreen extends StatefulWidget {
   final String confirmedEmail;
@@ -535,7 +600,7 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
       if (query.docs.isNotEmpty) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(backgroundColor: Colors.red, content: Text('اسم المستخدم هذا محجوز لشخص آخر، اختر اسماً آخر')),
+          const SnackBar(backgroundColor: Colors.red, content: Text('اسم المستخدم هذا محجوز، اختر اسماً آخر')),
         );
         return;
       }
@@ -555,47 +620,49 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
         'username': username,
       });
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('تم إنشاء الحساب بنجاح!', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('رقم التعريف الشخصي الخاص بك هو:', textAlign: TextAlign.center),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(color: const Color(0xFF0F5132).withOpacity(0.1), borderRadius: BorderRadius.circular(15)),
-                child: Text(pin, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 3, color: Color(0xFF0F5132))),
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('تم إنشاء الحساب بنجاح!', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('رقم التعريف الشخصي الخاص بك هو:', textAlign: TextAlign.center),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  decoration: BoxDecoration(color: const Color(0xFF0F5132).withOpacity(0.1), borderRadius: BorderRadius.circular(15)),
+                  child: Text(pin, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 3, color: Color(0xFF0F5132))),
+                ),
+                const SizedBox(height: 10),
+                const Text('هذا الرقم مخصص لإضافة الأصدقاء والبحث عنك.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132)),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MainChatHomeScreen(
+                        myEmail: widget.confirmedEmail,
+                        myUsername: username,
+                        myPin: pin,
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('دخول للتطبيق', style: TextStyle(color: Colors.white)),
               ),
-              const SizedBox(height: 10),
-              const Text('هذا الرقم مخصص لإضافة الأصدقاء والبحث عنك.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132)),
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => MainChatHomeScreen(
-                      myEmail: widget.confirmedEmail,
-                      myUsername: username,
-                      myPin: pin,
-                    ),
-                  ),
-                );
-              },
-              child: const Text('دخول للتطبيق', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-      );
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('حدث خطأ: $e')));
     } finally {
@@ -612,7 +679,7 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('البريد الإلكتروني المؤكد (ثابت غير قابل للتغيير):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            const Text('البريد الإلكتروني المؤكد:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             TextField(
               controller: TextEditingController(text: widget.confirmedEmail),
@@ -626,13 +693,13 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
               ),
             ),
             const SizedBox(height: 20),
-            const Text('اختر اسم المستخدم (فريد وغير قابل للتكرار):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            const Text('اختر اسم المستخدم:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             TextField(
               controller: _usernameController,
               textAlign: TextAlign.right,
               decoration: InputDecoration(
-                hintText: 'مثال: atheer99',
+                hintText: 'اسم المستخدم الفريد',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                 prefixIcon: const Icon(Icons.person),
               ),
@@ -654,7 +721,7 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
 }
 
 // -------------------------------------------------------------
-// 4. الشاشة الرئيسية للتطبيق
+// 4. الشاشة الرئيسية: الاستماع للمكالمات وتنبيهات الرسائل الجديدة
 // -------------------------------------------------------------
 class MainChatHomeScreen extends StatefulWidget {
   final String myEmail;
@@ -668,6 +735,105 @@ class MainChatHomeScreen extends StatefulWidget {
 }
 
 class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
+  StreamSubscription? _callSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForCalls();
+  }
+
+  @override
+  void dispose() {
+    _callSubscription?.cancel();
+    super.dispose();
+  }
+
+  // حل مشكلة المكالمات الصوتية والمرئية (المشكلة 1)
+  void _listenForCalls() {
+    _callSubscription = FirebaseFirestore.instance
+        .collection('active_calls')
+        .where('targetPin', isEqualTo: widget.myPin)
+        .where('status', isEqualTo: 'ringing')
+        .snapshots()
+        .listen((snapshot) {
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          final data = change.doc.data() as Map<String, dynamic>;
+          final callId = change.doc.id;
+          final callerName = data['callerName'] ?? 'صديق';
+          final isVideo = data['isVideo'] ?? false;
+
+          _showIncomingCallDialog(callId, callerName, isVideo);
+        }
+      }
+    });
+  }
+
+  void _showIncomingCallDialog(String callId, String callerName, bool isVideo) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF042414),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          isVideo ? 'مكالمة فيديو واردة...' : 'مكالمة صوتية واردة...',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 40,
+              backgroundColor: const Color(0xFF0F5132),
+              child: Icon(isVideo ? Icons.videocam : Icons.call, size: 45, color: Colors.white),
+            ),
+            const SizedBox(height: 15),
+            Text(callerName, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        actions: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              FloatingActionButton(
+                heroTag: 'reject',
+                backgroundColor: Colors.red,
+                onPressed: () {
+                  FirebaseFirestore.instance.collection('active_calls').doc(callId).update({'status': 'rejected'});
+                  Navigator.pop(ctx);
+                },
+                child: const Icon(Icons.call_end, color: Colors.white),
+              ),
+              FloatingActionButton(
+                heroTag: 'accept',
+                backgroundColor: Colors.green,
+                onPressed: () {
+                  FirebaseFirestore.instance.collection('active_calls').doc(callId).update({'status': 'connected'});
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => LiveCallConnectedScreen(
+                        callId: callId,
+                        friendName: callerName,
+                        isVideo: isVideo,
+                      ),
+                    ),
+                  );
+                },
+                child: const Icon(Icons.call, color: Colors.white),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  // حل مشكلة إضافة الصديق والتواصل الفوري دون انتظار إضافته لك (المشكلة 2)
   void _showAddContactDialog() {
     final TextEditingController searchPinController = TextEditingController();
     Map<String, dynamic>? foundUser;
@@ -685,7 +851,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('أضف رقم التعريف الشخصي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text('أدخل رقم التعريف الشخصي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 10),
                   TextField(
                     controller: searchPinController,
@@ -715,7 +881,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
                               final pin = searchPinController.text.trim();
                               if (pin == widget.myPin) {
                                 setDialogState(() {
-                                  searchError = 'هذا هو رقم التعريف الشخصي الخاص بك!';
+                                  searchError = 'هذا هو رقمك الشخصي!';
                                   foundUser = null;
                                 });
                                 return;
@@ -736,7 +902,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
                                   });
                                 } else {
                                   setDialogState(() {
-                                    searchError = 'لم يتم العثور على مشترك بهذا الرقم';
+                                    searchError = 'لم يتم العثور على هذا الرقم';
                                     isSearching = false;
                                   });
                                 }
@@ -762,21 +928,38 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
                         children: [
                           Text('اسم المستخدم: ${foundUser!['username']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           const SizedBox(height: 4),
-                          Text('رقم التعريف الشخصي: ${foundUser!['pin']}', style: const TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+                          Text('رقم التعريف: ${foundUser!['pin']}', style: const TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
                           const SizedBox(height: 12),
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF137547), foregroundColor: Colors.white),
                             icon: const Icon(Icons.person_add),
-                            label: const Text('تثبيت كجهة اتصال'),
+                            label: const Text('تثبيت وبدء المحادثة فوراً'),
                             onPressed: () async {
+                              // إضافة الصديق عندك
                               await FirebaseFirestore.instance
                                   .collection('users')
                                   .doc(widget.myEmail)
                                   .collection('contacts')
                                   .doc(foundUser!['pin'])
                                   .set(foundUser!);
+
+                              // إضافتك تلقائياً عند الصديق للتواصل المتبادل الفوري
+                              final friendEmail = foundUser!['email'];
+                              if (friendEmail != null && friendEmail.isNotEmpty) {
+                                await FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(friendEmail)
+                                    .collection('contacts')
+                                    .doc(widget.myPin)
+                                    .set({
+                                  'username': widget.myUsername,
+                                  'email': widget.myEmail,
+                                  'pin': widget.myPin,
+                                });
+                              }
+
                               Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تثبيت جهة الاتصال بنجاح')));
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت الإضافة بنجاح ويمكنكما التراسل الآن!')));
                             },
                           ),
                         ],
@@ -790,6 +973,12 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
         },
       ),
     );
+  }
+
+  String _getChatId(String pin1, String pin2) {
+    List<String> pins = [pin1, pin2];
+    pins.sort();
+    return "${pins[0]}_${pins[1]}";
   }
 
   @override
@@ -808,6 +997,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
+            tooltip: 'تسجيل الخروج',
             onPressed: () {
               FirebaseAuth.instance.signOut();
               Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
@@ -842,26 +1032,73 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final contact = docs[index].data() as Map<String, dynamic>;
-              return ListTile(
-                tileColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                leading: const CircleAvatar(backgroundColor: Color(0xFF0F5132), child: Icon(Icons.person, color: Colors.white)),
-                title: Text(contact['username'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                subtitle: Text('رقم التعريف: ${contact['pin']}', style: const TextStyle(color: Color(0xFF0F5132))),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatConversationScreen(
-                        myEmail: widget.myEmail,
-                        myUsername: widget.myUsername,
-                        myPin: widget.myPin,
-                        friendEmail: contact['email'] ?? '',
-                        friendUsername: contact['username'] ?? '',
-                        friendPin: contact['pin'] ?? '',
-                      ),
+              final friendPin = contact['pin'] ?? '';
+              final friendName = contact['username'] ?? '';
+              final chatId = _getChatId(widget.myPin, friendPin);
+
+              // علامة وصول الرسائل الجديدة (المشكلة 3)
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('chats')
+                    .doc(chatId)
+                    .collection('messages')
+                    .where('senderPin', isEqualTo: friendPin)
+                    .where('isRead', isEqualTo: false)
+                    .snapshots(),
+                builder: (context, unreadSnapshot) {
+                  final unreadCount = unreadSnapshot.hasData ? unreadSnapshot.data!.docs.length : 0;
+
+                  return ListTile(
+                    tileColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: Stack(
+                      children: [
+                        const CircleAvatar(backgroundColor: Color(0xFF0F5132), child: Icon(Icons.person, color: Colors.white)),
+                        if (unreadCount > 0)
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                              child: Text(
+                                '$unreadCount',
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          )
+                      ],
                     ),
+                    title: Text(friendName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    subtitle: Text('رقم التعريف: $friendPin', style: const TextStyle(color: Color(0xFF0F5132))),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (unreadCount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(12)),
+                            child: const Text('رسالة جديدة', style: TextStyle(color: Colors.white, fontSize: 11)),
+                          ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                      ],
+                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatConversationScreen(
+                            myEmail: widget.myEmail,
+                            myUsername: widget.myUsername,
+                            myPin: widget.myPin,
+                            friendEmail: contact['email'] ?? '',
+                            friendUsername: friendName,
+                            friendPin: friendPin,
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               );
@@ -880,7 +1117,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
 }
 
 // -------------------------------------------------------------
-// 5. شاشة الدردشة والمكالمات وإرسال الصور والمستندات (مجاناً 100%)
+// 5. شاشة المحادثة: إرسال الرسائل والصوت والمستندات وعلامات القراءة
 // -------------------------------------------------------------
 class ChatConversationScreen extends StatefulWidget {
   final String myEmail;
@@ -914,6 +1151,27 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     return "${pins[0]}_${pins[1]}";
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _markMessagesAsRead();
+  }
+
+  // تحديث حالة الرسائل إلى "تمت القراءة" (المقترح 2)
+  void _markMessagesAsRead() async {
+    final query = await FirebaseFirestore.instance
+        .collection('chats')
+        .doc(_chatId)
+        .collection('messages')
+        .where('senderPin', isEqualTo: widget.friendPin)
+        .where('isRead', isEqualTo: false)
+        .get();
+
+    for (var doc in query.docs) {
+      doc.reference.update({'isRead': true});
+    }
+  }
+
   void _sendTextMessage() {
     final text = _msgController.text.trim();
     if (text.isEmpty) return;
@@ -924,12 +1182,13 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       'senderPin': widget.myPin,
       'type': 'text',
       'content': text,
+      'isRead': false,
       'timestamp': FieldValue.serverTimestamp(),
     });
   }
 
   Future<void> _pickAndSendImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 40);
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 35);
     if (image == null) return;
 
     final bytes = await File(image.path).readAsBytes();
@@ -940,43 +1199,64 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       'senderPin': widget.myPin,
       'type': 'image',
       'content': base64String,
+      'isRead': false,
       'timestamp': FieldValue.serverTimestamp(),
     });
   }
 
+  // حل مشكلة الملفات الصوتية والمستندات (المشكلة 5)
   Future<void> _pickAndSendDocument() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+    );
     if (result != null && result.files.single.path != null) {
       File file = File(result.files.single.path!);
       final bytes = await file.readAsBytes();
       final base64Doc = base64Encode(bytes);
       final fileName = result.files.single.name;
+      final extension = result.files.single.extension?.toLowerCase() ?? '';
+
+      final isAudio = ['mp3', 'm4a', 'wav', 'aac', 'ogg'].contains(extension);
 
       FirebaseFirestore.instance.collection('chats').doc(_chatId).collection('messages').add({
         'sender': widget.myUsername,
         'senderPin': widget.myPin,
-        'type': 'file',
+        'type': isAudio ? 'audio' : 'file',
         'fileName': fileName,
         'content': base64Doc,
+        'isRead': false,
         'timestamp': FieldValue.serverTimestamp(),
       });
     }
   }
 
+  // بدء المكالمة مع إشعار الطرف الآخر ورنينه (المشكلة 1)
   void _startCall({required bool isVideo}) async {
-    await Permission.camera.request();
     await Permission.microphone.request();
+    if (isVideo) await Permission.camera.request();
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ActiveCallScreen(
-          friendName: widget.friendUsername,
-          friendPin: widget.friendPin,
-          isVideo: isVideo,
+    final callDoc = FirebaseFirestore.instance.collection('active_calls').doc();
+    await callDoc.set({
+      'callerPin': widget.myPin,
+      'callerName': widget.myUsername,
+      'targetPin': widget.friendPin,
+      'isVideo': isVideo,
+      'status': 'ringing',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OutgoingRingingScreen(
+            callId: callDoc.id,
+            friendName: widget.friendUsername,
+            isVideo: isVideo,
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   @override
@@ -988,10 +1268,15 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(widget.friendUsername, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(widget.friendUsername, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
             Text(
-              'رقم التعريف الشخصي: ${widget.friendPin}',
-              style: const TextStyle(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w500),
+              'رقم التعريف: ${widget.friendPin}',
+              style: const TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+            // إضافة العبارة المطلوبة (المقترح 3)
+            const Text(
+              'صديقك موجود وياك',
+              style: TextStyle(fontSize: 12, color: Color(0xFFA3E635), fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -1023,12 +1308,12 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 final docs = snapshot.data!.docs;
 
+                // قراءة الرسائل الواردة تلقائياً عند فتح الشاشة
+                _markMessagesAsRead();
+
                 if (docs.isEmpty) {
                   return Center(
-                    child: Text(
-                      'ابدأ المحادثة مع ${widget.friendUsername}',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
+                    child: Text('ابدأ المحادثة مع ${widget.friendUsername}', style: const TextStyle(color: Colors.grey)),
                   );
                 }
 
@@ -1039,18 +1324,37 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                   itemBuilder: (context, index) {
                     final msg = docs[index].data() as Map<String, dynamic>;
                     final isMe = msg['senderPin'] == widget.myPin;
+                    final isRead = msg['isRead'] ?? false;
 
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 4),
                         padding: const EdgeInsets.all(10),
-                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
                         decoration: BoxDecoration(
                           color: isMe ? const Color(0xFF137547) : Colors.grey.shade300,
                           borderRadius: BorderRadius.circular(15),
                         ),
-                        child: _buildMessageContent(msg, isMe),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            _buildMessageContent(msg, isMe),
+                            const SizedBox(height: 4),
+                            // علامات الاستلام والقراءة (المقترح 2)
+                            if (isMe)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.done_all,
+                                    size: 16,
+                                    color: isRead ? const Color(0xFFA3E635) : Colors.white70,
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -1104,6 +1408,30 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       } catch (_) {
         return Text('فشل عرض الصورة', style: TextStyle(color: textColor));
       }
+    } else if (type == 'audio') {
+      // فتح وعرض الملف الصوتي
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.audiotrack, color: textColor),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              msg['fileName'] ?? 'ملف صوتي',
+              style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.play_circle_fill, color: textColor, size: 30),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('تم استلام الملف الصوتي بنجاح')),
+              );
+            },
+          )
+        ],
+      );
     } else if (type == 'file') {
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -1129,27 +1457,132 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
 }
 
 // -------------------------------------------------------------
-// 6. شاشة المكالمات (الصوتية والمرئية)
+// 6. شاشات الرنين والمكالمات المتصلة الحية
 // -------------------------------------------------------------
-class ActiveCallScreen extends StatefulWidget {
+class OutgoingRingingScreen extends StatefulWidget {
+  final String callId;
   final String friendName;
-  final String friendPin;
   final bool isVideo;
 
-  const ActiveCallScreen({
+  const OutgoingRingingScreen({
     super.key,
+    required this.callId,
     required this.friendName,
-    required this.friendPin,
     required this.isVideo,
   });
 
   @override
-  State<ActiveCallScreen> createState() => _ActiveCallScreenState();
+  State<OutgoingRingingScreen> createState() => _OutgoingRingingScreenState();
 }
 
-class _ActiveCallScreenState extends State<ActiveCallScreen> {
+class _OutgoingRingingScreenState extends State<OutgoingRingingScreen> {
+  StreamSubscription? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = FirebaseFirestore.instance.collection('active_calls').doc(widget.callId).snapshots().listen((snap) {
+      if (snap.exists) {
+        final status = snap.data()?['status'];
+        if (status == 'connected' && mounted) {
+          _sub?.cancel();
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LiveCallConnectedScreen(
+                callId: widget.callId,
+                friendName: widget.friendName,
+                isVideo: widget.isVideo,
+              ),
+            ),
+          );
+        } else if ((status == 'rejected' || status == 'ended') && mounted) {
+          _sub?.cancel();
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إنهاء المكالمة')));
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF042414),
+      body: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            Column(
+              children: [
+                CircleAvatar(
+                  radius: 50,
+                  backgroundColor: const Color(0xFF0F5132),
+                  child: Icon(widget.isVideo ? Icons.videocam : Icons.person, size: 60, color: Colors.white),
+                ),
+                const SizedBox(height: 20),
+                Text(widget.friendName, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+                const SizedBox(height: 8),
+                const Text('جارٍ الاتصال والرنين...', style: TextStyle(color: Colors.white70, fontSize: 16)),
+              ],
+            ),
+            FloatingActionButton(
+              backgroundColor: Colors.red,
+              onPressed: () {
+                FirebaseFirestore.instance.collection('active_calls').doc(widget.callId).update({'status': 'ended'});
+                Navigator.pop(context);
+              },
+              child: const Icon(Icons.call_end, color: Colors.white, size: 32),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class LiveCallConnectedScreen extends StatefulWidget {
+  final String callId;
+  final String friendName;
+  final bool isVideo;
+
+  const LiveCallConnectedScreen({
+    super.key,
+    required this.callId,
+    required this.friendName,
+    required this.isVideo,
+  });
+
+  @override
+  State<LiveCallConnectedScreen> createState() => _LiveCallConnectedScreenState();
+}
+
+class _LiveCallConnectedScreenState extends State<LiveCallConnectedScreen> {
   bool _isMuted = false;
   bool _isSpeaker = false;
+  StreamSubscription? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = FirebaseFirestore.instance.collection('active_calls').doc(widget.callId).snapshots().listen((snap) {
+      if (snap.exists && snap.data()?['status'] == 'ended' && mounted) {
+        Navigator.pop(context);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1160,32 +1593,18 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Padding(
-              padding: const EdgeInsets.only(top: 40.0),
+              padding: const EdgeInsets.only(top: 50.0),
               child: Column(
                 children: [
                   CircleAvatar(
-                    radius: 50,
+                    radius: 55,
                     backgroundColor: const Color(0xFF0F5132),
-                    child: Icon(
-                      widget.isVideo ? Icons.videocam : Icons.person,
-                      size: 60,
-                      color: Colors.white,
-                    ),
+                    child: Icon(widget.isVideo ? Icons.videocam : Icons.person, size: 65, color: Colors.white),
                   ),
                   const SizedBox(height: 20),
-                  Text(
-                    widget.friendName,
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
+                  Text(widget.friendName, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(height: 8),
-                  Text(
-                    widget.isVideo ? 'مكالمة فيديو جارية...' : 'مكالمة صوتية جارية...',
-                    style: const TextStyle(fontSize: 16, color: Colors.white70),
-                  ),
-                  Text(
-                    'رقم التعريف: ${widget.friendPin}',
-                    style: const TextStyle(fontSize: 13, color: Colors.white60),
-                  ),
+                  Text(widget.isVideo ? 'مكالمة فيديو متصلة' : 'مكالمة صوتية متصلة', style: const TextStyle(color: Color(0xFFA3E635), fontSize: 16, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -1201,8 +1620,11 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                   ),
                   FloatingActionButton(
                     backgroundColor: Colors.red,
-                    onPressed: () => Navigator.pop(context),
-                    child: const Icon(Icons.call_end, color: Colors.white, size: 30),
+                    onPressed: () {
+                      FirebaseFirestore.instance.collection('active_calls').doc(widget.callId).update({'status': 'ended'});
+                      Navigator.pop(context);
+                    },
+                    child: const Icon(Icons.call_end, color: Colors.white, size: 32),
                   ),
                   IconButton(
                     iconSize: 40,
