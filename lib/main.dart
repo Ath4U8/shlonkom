@@ -1,18 +1,25 @@
-import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await Firebase.initializeApp();
-  } catch (e) {
-    debugPrint('Firebase init error: $e');
-  }
+  await Firebase.initializeApp();
+
+  // تمديد الشاشة بالكامل خلف شريط النظام لإلغاء أي فراغ أبيض
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
+
   runApp(const ShlonkomApp());
 }
 
@@ -22,361 +29,305 @@ class ShlonkomApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
       title: 'شلونكم',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        fontFamily: 'sans-serif',
-        primaryColor: const Color(0xFF0F7A3E),
+        fontFamily: 'Cairo',
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0F5132)),
+        useMaterial3: true,
       ),
-      home: const AuthWrapper(),
+      home: const AuthScreen(),
     );
   }
 }
 
-class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({super.key});
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key});
 
   @override
-  State<AuthWrapper> createState() => _AuthWrapperState();
+  State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthWrapperState extends State<AuthWrapper> {
-  User? _currentUser;
-  Map<String, dynamic>? _userData;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkCurrentUser();
-  }
-
-  Future<void> _checkCurrentUser() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      try {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        if (doc.exists) {
-          setState(() {
-            _currentUser = user;
-            _userData = doc.data();
-            _isLoading = false;
-          });
-          return;
-        }
-      } catch (_) {}
-    }
-    setState(() {
-      _currentUser = null;
-      _userData = null;
-      _isLoading = false;
-    });
-  }
-
-  void _onLoginSuccess(User user, Map<String, dynamic> data) {
-    setState(() {
-      _currentUser = user;
-      _userData = data;
-    });
-  }
-
-  void _onLogout() async {
-    await FirebaseAuth.instance.signOut();
-    setState(() {
-      _currentUser = null;
-      _userData = null;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF064E24),
-        body: Center(child: CircularProgressIndicator(color: Colors.white)),
-      );
-    }
-    if (_currentUser != null && _userData != null) {
-      return HomeScreen(userData: _userData!, onLogout: _onLogout);
-    }
-    return LoginScreen(onLoginSuccess: _onLoginSuccess);
-  }
-}
-
-class LoginScreen extends StatefulWidget {
-  final Function(User, Map<String, dynamic>) onLoginSuccess;
-  const LoginScreen({super.key, required this.onLoginSuccess});
-
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
+class _AuthScreenState extends State<AuthScreen> {
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
   bool _isLoading = false;
 
-  void _showNotice(String text, {bool isError = true}) {
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _showMessage(String text, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(text, textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'sans-serif')),
-        backgroundColor: isError ? Colors.red.shade700 : const Color(0xFF0F7A3E),
+        content: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: isError ? Colors.red.shade700 : const Color(0xFF0F5132),
       ),
     );
   }
 
-  // جلب عنوان IP عبر مكتبة HttpClient المدمجة بدون حزم خارجية
-  Future<String?> _getDeviceIp() async {
-    try {
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 4);
-      final request = await client.getUrl(Uri.parse('https://api.ipify.org?format=json'));
-      final response = await request.close();
-      if (response.statusCode == 200) {
-        final body = await response.transform(utf8.decoder).join();
-        final data = jsonDecode(body);
-        return data['ip'];
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  Future<String> _generateUniquePin() async {
-    final random = Random();
-    while (true) {
-      String pin = (100000 + random.nextInt(900000)).toString();
-      final check = await FirebaseFirestore.instance.collection('users').where('pin', isEqualTo: pin).limit(1).get();
-      if (check.docs.isEmpty) return pin;
-    }
-  }
-
-  Future<void> _handleLogin() async {
-    final email = _emailController.text.trim().toLowerCase();
-    final username = _usernameController.text.trim();
-
-    if (email.isEmpty || username.isEmpty) {
-      _showNotice('يرجى كتابة البريد الإلكتروني واسم المستخدم');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      final query = await FirebaseFirestore.instance
-          .collection('users')
-          .where('email', isEqualTo: email)
-          .where('username', isEqualTo: username)
-          .limit(1)
-          .get();
-
-      if (query.docs.isEmpty) {
-        _showNotice('البريد أو اسم المستخدم غير مطابق للبيانات');
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      final userData = query.docs.first.data();
-      final userCred = await FirebaseAuth.instance.signInAnonymously();
-      widget.onLoginSuccess(userCred.user!, userData);
-    } catch (e) {
-      _showNotice('حدث خطأ أثناء تسجيل الدخول: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
+  // تسجيل حساب جديد بدون فحص أو تسجيل الـ IP
   Future<void> _handleRegister() async {
-    final email = _emailController.text.trim().toLowerCase();
-    final username = _usernameController.text.trim();
+    final email = _emailController.text.trim();
+    final name = _nameController.text.trim();
 
-    if (email.isEmpty || username.isEmpty) {
-      _showNotice('يرجى إدخال البريد واسم المستخدم للتسجيل');
-      return;
-    }
-
-    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
-      _showNotice('صيغة البريد الإلكتروني غير صحيحة');
+    if (email.isEmpty || name.isEmpty) {
+      _showMessage('يرجى كتابة البريد الإلكتروني والاسم أولاً', isError: true);
       return;
     }
 
     setState(() => _isLoading = true);
+
     try {
-      final userQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where('username', isEqualTo: username)
-          .limit(1)
-          .get();
-
-      if (userQuery.docs.isNotEmpty) {
-        _showNotice('اسم المستخدم محجوز بالفعل، اختر اسماً آخر');
-        setState(() => _isLoading = false);
-        return;
+      UserCredential userCredential;
+      if (FirebaseAuth.instance.currentUser == null) {
+        userCredential = await FirebaseAuth.instance.signInAnonymously();
+      } else {
+        userCredential = await FirebaseAuth.instance.signInAnonymously();
       }
 
-      final emailQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
+      final userId = userCredential.user?.uid ?? '';
 
-      if (emailQuery.docs.isNotEmpty) {
-        _showNotice('البريد الإلكتروني مسجل مسبقاً، يمكنك الدخول به');
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      final currentIp = await _getDeviceIp();
-      if (currentIp != null) {
-        final ipCheck = await FirebaseFirestore.instance
-            .collection('users')
-            .where('device_ip', isEqualTo: currentIp)
-            .limit(1)
-            .get();
-
-        if (ipCheck.docs.isNotEmpty) {
-          _showNotice('تم إنشاء حساب مسبقاً من هذا الجهاز/الشبكة');
-          setState(() => _isLoading = false);
-          return;
-        }
-      }
-
-      final pin = await _generateUniquePin();
-      final userCred = await FirebaseAuth.instance.signInAnonymously();
-
-      final newUserData = {
-        'uid': userCred.user!.uid,
+      // حفظ بيانات المستخدم في Firestore بدون حقل الـ IP
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'uid': userId,
         'email': email,
-        'username': username,
-        'pin': pin,
-        'device_ip': currentIp ?? 'unknown',
+        'name': name,
         'createdAt': FieldValue.serverTimestamp(),
-        'contacts': [],
-      };
+      }, SetOptions(merge: true));
 
-      await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).set(newUserData);
-
-      _showNotice('تم إنشاء الحساب! رقم التعريف الخاص بك: $pin', isError: false);
-      widget.onLoginSuccess(userCred.user!, newUserData);
+      _showMessage('تم التسجيل بنجاح! أهلاً بك $name');
     } catch (e) {
-      _showNotice('تعذر إكمال التسجيل: $e');
+      _showMessage('حدث خطأ أثناء التسجيل: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // تسجيل الدخول
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      _showMessage('يرجى إدخال البريد الإلكتروني للدخول', isError: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      if (FirebaseAuth.instance.currentUser == null) {
+        await FirebaseAuth.instance.signInAnonymously();
+      }
+      _showMessage('تم تسجيل الدخول بنجاح');
+    } catch (e) {
+      _showMessage('حدث خطأ أثناء تسجيل الدخول: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // نافذة استعادة الحساب عبر الإيميل
+  void _showForgotPasswordDialog() {
+    final TextEditingController resetEmailController = TextEditingController(text: _emailController.text);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            'استعادة حسابي',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F5132)),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'أدخل بريدك الإلكتروني المسجل لنرسل لك تفاصيل استعادة الحساب:',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: resetEmailController,
+                keyboardType: TextInputType.emailAddress,
+                textAlign: TextAlign.right,
+                decoration: InputDecoration(
+                  hintText: 'البريد الإلكتروني',
+                  prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF0F5132)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F5132),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                final email = resetEmailController.text.trim();
+                if (email.isEmpty) {
+                  _showMessage('يرجى كتابة البريد الإلكتروني', isError: true);
+                  return;
+                }
+                Navigator.pop(context);
+                try {
+                  await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+                  _showMessage('تم إرسال رابط استعادة الحساب إلى بريدك الإلكتروني بنجاح');
+                } catch (e) {
+                  _showMessage('تم تسجيل طلب الاسترجاع لهذا البريد: $email');
+                }
+              },
+              child: const Text('إرسال', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0B3B24),
+      resizeToAvoidBottomInset: false,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          Positioned.fill(
-            child: Image.network(
-              'https://raw.githubusercontent.com/Ath4U8/shlonkom/main/assets/images/login_bg.png',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(color: const Color(0xFF064E24)),
-            ),
+          // الخلفية ممتدة حتى حواف الشاشة بالكامل لمنع أي فراغ
+          Image.asset(
+            'assets/images/background.png',
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF0F5132), Color(0xFF052c17)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              );
+            },
           ),
+
           SafeArea(
+            bottom: true,
+            top: true,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
               child: Column(
                 children: [
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.53),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.92),
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3)),
-                      ],
-                    ),
-                    child: TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      textAlign: TextAlign.right,
-                      decoration: const InputDecoration(
-                        hintText: 'البريد الإلكتروني',
-                        hintStyle: TextStyle(color: Colors.grey, fontSize: 15),
-                        prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF0F7A3E)),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                      ),
-                    ),
+                  const SizedBox(height: 280),
+
+                  // حقل البريد الإلكتروني
+                  _buildInputField(
+                    controller: _emailController,
+                    hint: 'البريد الإلكتروني',
+                    icon: Icons.email_outlined,
+                    keyboardType: TextInputType.emailAddress,
                   ),
-                  const SizedBox(height: 12),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.92),
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3)),
-                      ],
-                    ),
-                    child: TextField(
-                      controller: _usernameController,
-                      textAlign: TextAlign.right,
-                      decoration: const InputDecoration(
-                        hintText: 'اسم المستخدم',
-                        hintStyle: TextStyle(color: Colors.grey, fontSize: 15),
-                        prefixIcon: Icon(Icons.person_outline, color: Color(0xFF0F7A3E)),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                      ),
-                    ),
+                  const SizedBox(height: 14),
+
+                  // حقل الاسم
+                  _buildInputField(
+                    controller: _nameController,
+                    hint: 'الاسم',
+                    icon: Icons.person_outline,
+                    keyboardType: TextInputType.text,
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 20),
+
+                  // زر الدخول الأخضر
                   SizedBox(
                     width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _handleLogin,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F7A3E),
+                        backgroundColor: const Color(0xFF137547),
                         foregroundColor: Colors.white,
                         elevation: 4,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          side: const BorderSide(color: Color(0xFF27AE60), width: 1.2),
+                          borderRadius: BorderRadius.circular(26),
                         ),
                       ),
-                      onPressed: _isLoading ? null : _handleLogin,
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.login, size: 22),
-                                SizedBox(width: 8),
-                                Text('دخول', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                              ],
+                      icon: const Icon(Icons.login),
+                      label: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text(
+                              'دخول',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                             ),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
+
+                  // زر تسجيل جديد وتأكيد الأبيض
                   SizedBox(
                     width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _handleRegister,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white.withOpacity(0.95),
-                        foregroundColor: const Color(0xFF0F7A3E),
+                        foregroundColor: const Color(0xFF0F5132),
                         elevation: 4,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(26),
+                        ),
                       ),
-                      onPressed: _isLoading ? null : _handleRegister,
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.person_add_alt_1, size: 22, color: Color(0xFF0F7A3E)),
-                          SizedBox(width: 8),
-                          Text('تسجيل جديد وتأكيد', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        ],
+                      icon: const Icon(Icons.person_add_alt_1),
+                      label: const Text(
+                        'تسجيل جديد وتأكيد',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 25),
+
+                  // زر استعادة حسابي
+                  TextButton(
+                    onPressed: _showForgotPasswordDialog,
+                    child: const Text(
+                      'استعادة حسابي',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.underline,
+                        decorationColor: Colors.white,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 15),
+                  const Text(
+                    'Designed by: Atheer Sami',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      letterSpacing: 1.1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                 ],
               ),
             ),
@@ -385,172 +336,37 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-}
 
-class HomeScreen extends StatefulWidget {
-  final Map<String, dynamic> userData;
-  final VoidCallback onLogout;
-  const HomeScreen({super.key, required this.userData, required this.onLogout});
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController _pinSearchController = TextEditingController();
-  List<dynamic> _contacts = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _contacts = widget.userData['contacts'] ?? [];
-  }
-
-  void _showAddContactDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('إضافة جهة اتصال', textAlign: TextAlign.center),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('أدخل رقم التعريف الشخصي (PIN):', textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _pinSearchController,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              decoration: InputDecoration(
-                hintText: 'مثال: 111111',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _pinSearchController.clear();
-              Navigator.pop(ctx);
-            },
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F7A3E),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () async {
-              final pin = _pinSearchController.text.trim();
-              if (pin.isEmpty) return;
-
-              if (pin == widget.userData['pin']) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('لا يمكنك إضافة رقم التعريف الخاص بك')),
-                );
-                return;
-              }
-
-              final res = await FirebaseFirestore.instance.collection('users').where('pin', isEqualTo: pin).limit(1).get();
-              if (res.docs.isEmpty) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('لم يتم العثور على مشترك بهذا الرقم')),
-                  );
-                }
-              } else {
-                final friendData = res.docs.first.data();
-                final contactEntry = {
-                  'pin': friendData['pin'],
-                  'username': friendData['username'],
-                  'uid': res.docs.first.id,
-                };
-
-                await FirebaseFirestore.instance.collection('users').doc(widget.userData['uid']).update({
-                  'contacts': FieldValue.arrayUnion([contactEntry])
-                });
-
-                setState(() {
-                  _contacts.add(contactEntry);
-                });
-
-                _pinSearchController.clear();
-                if (mounted) {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('تمت إضافة ${friendData['username']} بنجاح!')),
-                  );
-                }
-              }
-            },
-            child: const Text('بحث وإضافة', style: TextStyle(color: Colors.white)),
+  Widget _buildInputField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    required TextInputType keyboardType,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final myPin = widget.userData['pin'] ?? '------';
-    final myName = widget.userData['username'] ?? '';
-
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0F7A3E),
-        title: Column(
-          children: [
-            Text('شلونكم - $myName', style: const TextStyle(fontSize: 18)),
-            Text('رقم التعريف الشخصي: $myPin', style: const TextStyle(fontSize: 13, color: Colors.white70)),
-          ],
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        textDirection: TextDirection.rtl,
+        textAlign: TextAlign.right,
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(color: Colors.grey.shade600),
+          prefixIcon: Icon(icon, color: const Color(0xFF0F5132)),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         ),
-        centerTitle: true,
-        actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: widget.onLogout),
-        ],
-      ),
-      body: _contacts.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.people_outline, size: 80, color: Colors.grey),
-                  const SizedBox(height: 14),
-                  const Text('لا توجد جهات اتصال حتى الآن', style: TextStyle(fontSize: 18, color: Colors.grey)),
-                  const SizedBox(height: 8),
-                  Text('شارك رقم التعريف الخاص بك ($myPin) مع أصدقائك', style: const TextStyle(color: Color(0xFF0F7A3E))),
-                ],
-              ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: _contacts.length,
-              separatorBuilder: (_, __) => const Divider(),
-              itemBuilder: (context, index) {
-                final contact = _contacts[index];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xFF0F7A3E),
-                    child: Text(
-                      contact['username'] != null && contact['username'].isNotEmpty
-                          ? contact['username'][0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  title: Text(contact['username'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('PIN: ${contact['pin']}'),
-                  trailing: const Icon(Icons.chat_bubble_outline, color: Color(0xFF0F7A3E)),
-                  onTap: () {},
-                );
-              },
-            ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF0F7A3E),
-        icon: const Icon(Icons.person_add),
-        label: const Text('إضافة جهة اتصال'),
-        onPressed: _showAddContactDialog,
       ),
     );
   }
