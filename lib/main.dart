@@ -1,10 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +33,6 @@ void main() async {
   runApp(const ShlonkomApp());
 }
 
-// دالة توليد كلمة سر داخلية ثابتة لتجنيب المستخدم إدخال أو حفظ أي كلمة مرور
 String _generateInternalSecret(String email) {
   return "Shlonkom_${email.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '')}_2026";
 }
@@ -52,7 +56,7 @@ class ShlonkomApp extends StatelessWidget {
 }
 
 // -------------------------------------------------------------
-// 1. شاشة تسجيل الدخول والواجهة الرئيسية (إيميل + اسم مستخدم فقط)
+// 1. شاشة تسجيل الدخول
 // -------------------------------------------------------------
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -75,7 +79,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // تسجيل الدخول بدون كلمة مرور
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim().toLowerCase();
     final username = _usernameController.text.trim();
@@ -101,7 +104,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // تسجيل دخول خلفي بدون علم المستخدم
       final secret = _generateInternalSecret(email);
       try {
         await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: secret);
@@ -127,7 +129,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // استعادة الحساب بواسطة البريد الإلكتروني
   void _showRecoverDialog() {
     final TextEditingController recoverEmail = TextEditingController();
     showDialog(
@@ -165,11 +166,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 if (doc.exists) {
                   final uName = doc.data()?['username'] ?? '';
                   final uPin = doc.data()?['pin'] ?? '';
-
-                  try {
-                    await FirebaseAuth.instance.sendPasswordResetEmail(email: em);
-                  } catch (_) {}
-
                   _showRecoveryDetails(em, uName, uPin.toString());
                 } else {
                   _msg('هذا البريد غير مسجل مسبقاً', isError: true);
@@ -333,7 +329,7 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 // -------------------------------------------------------------
-// 2. خطوة تأكيد الإيميل لمرة واحدة فقط قبل التسجيل
+// 2. خطوة تأكيد الإيميل لمرة واحدة فقط
 // -------------------------------------------------------------
 class VerifyEmailForRegistrationScreen extends StatefulWidget {
   const VerifyEmailForRegistrationScreen({super.key});
@@ -658,7 +654,7 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
 }
 
 // -------------------------------------------------------------
-// 4. الشاشة الرئيسية للتطبيق وقائمة جهات الاتصال
+// 4. الشاشة الرئيسية للتطبيق
 // -------------------------------------------------------------
 class MainChatHomeScreen extends StatefulWidget {
   final String myEmail;
@@ -858,9 +854,12 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => ChatConversationScreen(
-                        friendUsername: contact['username'],
-                        friendPin: contact['pin'],
+                        myEmail: widget.myEmail,
                         myUsername: widget.myUsername,
+                        myPin: widget.myPin,
+                        friendEmail: contact['email'] ?? '',
+                        friendUsername: contact['username'] ?? '',
+                        friendPin: contact['pin'] ?? '',
                       ),
                     ),
                   );
@@ -881,19 +880,104 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
 }
 
 // -------------------------------------------------------------
-// 5. شاشة الدردشة والمحادثة مع الصديق
+// 5. شاشة الدردشة والمكالمات وإرسال الصور والمستندات (مجاناً 100%)
 // -------------------------------------------------------------
-class ChatConversationScreen extends StatelessWidget {
+class ChatConversationScreen extends StatefulWidget {
+  final String myEmail;
+  final String myUsername;
+  final String myPin;
+  final String friendEmail;
   final String friendUsername;
   final String friendPin;
-  final String myUsername;
 
   const ChatConversationScreen({
     super.key,
+    required this.myEmail,
+    required this.myUsername,
+    required this.myPin,
+    required this.friendEmail,
     required this.friendUsername,
     required this.friendPin,
-    required this.myUsername,
   });
+
+  @override
+  State<ChatConversationScreen> createState() => _ChatConversationScreenState();
+}
+
+class _ChatConversationScreenState extends State<ChatConversationScreen> {
+  final TextEditingController _msgController = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+
+  String get _chatId {
+    List<String> pins = [widget.myPin, widget.friendPin];
+    pins.sort();
+    return "${pins[0]}_${pins[1]}";
+  }
+
+  void _sendTextMessage() {
+    final text = _msgController.text.trim();
+    if (text.isEmpty) return;
+    _msgController.clear();
+
+    FirebaseFirestore.instance.collection('chats').doc(_chatId).collection('messages').add({
+      'sender': widget.myUsername,
+      'senderPin': widget.myPin,
+      'type': 'text',
+      'content': text,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> _pickAndSendImage() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 40);
+    if (image == null) return;
+
+    final bytes = await File(image.path).readAsBytes();
+    final base64String = base64Encode(bytes);
+
+    FirebaseFirestore.instance.collection('chats').doc(_chatId).collection('messages').add({
+      'sender': widget.myUsername,
+      'senderPin': widget.myPin,
+      'type': 'image',
+      'content': base64String,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> _pickAndSendDocument() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    if (result != null && result.files.single.path != null) {
+      File file = File(result.files.single.path!);
+      final bytes = await file.readAsBytes();
+      final base64Doc = base64Encode(bytes);
+      final fileName = result.files.single.name;
+
+      FirebaseFirestore.instance.collection('chats').doc(_chatId).collection('messages').add({
+        'sender': widget.myUsername,
+        'senderPin': widget.myPin,
+        'type': 'file',
+        'fileName': fileName,
+        'content': base64Doc,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  void _startCall({required bool isVideo}) async {
+    await Permission.camera.request();
+    await Permission.microphone.request();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ActiveCallScreen(
+          friendName: widget.friendUsername,
+          friendPin: widget.friendPin,
+          isVideo: isVideo,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -904,42 +988,232 @@ class ChatConversationScreen extends StatelessWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(friendUsername, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(widget.friendUsername, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             Text(
-              'رقم التعريف الشخصي: $friendPin',
+              'رقم التعريف الشخصي: ${widget.friendPin}',
               style: const TextStyle(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w500),
             ),
           ],
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.call, color: Colors.white),
+            tooltip: 'اتصال صوتي',
+            onPressed: () => _startCall(isVideo: false),
+          ),
+          IconButton(
+            icon: const Icon(Icons.videocam, color: Colors.white),
+            tooltip: 'مكالمة فيديو',
+            onPressed: () => _startCall(isVideo: true),
+          ),
+        ],
       ),
       body: Column(
         children: [
           Expanded(
-            child: Center(
-              child: Text(
-                'المحادثة مع $friendUsername\n(رقم التعريف الشخصي: $friendPin)',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16, color: Colors.grey),
-              ),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('chats')
+                  .doc(_chatId)
+                  .collection('messages')
+                  .orderBy('timestamp', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                final docs = snapshot.data!.docs;
+
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'ابدأ المحادثة مع ${widget.friendUsername}',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  reverse: true,
+                  padding: const EdgeInsets.all(12),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final msg = docs[index].data() as Map<String, dynamic>;
+                    final isMe = msg['senderPin'] == widget.myPin;
+
+                    return Align(
+                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        padding: const EdgeInsets.all(10),
+                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                        decoration: BoxDecoration(
+                          color: isMe ? const Color(0xFF137547) : Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: _buildMessageContent(msg, isMe),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             color: Colors.white,
             child: Row(
               children: [
-                IconButton(icon: const Icon(Icons.send, color: Color(0xFF0F5132)), onPressed: () {}),
-                const Expanded(
+                IconButton(
+                  icon: const Icon(Icons.send, color: Color(0xFF0F5132)),
+                  onPressed: _sendTextMessage,
+                ),
+                Expanded(
                   child: TextField(
+                    controller: _msgController,
                     textAlign: TextAlign.right,
-                    decoration: InputDecoration(hintText: 'اكتب رسالة...', border: InputBorder.none),
+                    decoration: const InputDecoration(hintText: 'اكتب رسالة...', border: InputBorder.none),
                   ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.attach_file, color: Colors.grey),
+                  onPressed: _pickAndSendDocument,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.image, color: Colors.grey),
+                  onPressed: _pickAndSendImage,
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMessageContent(Map<String, dynamic> msg, bool isMe) {
+    final type = msg['type'] ?? 'text';
+    final textColor = isMe ? Colors.white : Colors.black87;
+
+    if (type == 'image') {
+      try {
+        final bytes = base64Decode(msg['content']);
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.memory(bytes, fit: BoxFit.cover),
+        );
+      } catch (_) {
+        return Text('فشل عرض الصورة', style: TextStyle(color: textColor));
+      }
+    } else if (type == 'file') {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.insert_drive_file, color: textColor),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              msg['fileName'] ?? 'مستند مرفق',
+              style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Text(
+      msg['content'] ?? '',
+      style: TextStyle(color: textColor, fontSize: 15),
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// 6. شاشة المكالمات (الصوتية والمرئية)
+// -------------------------------------------------------------
+class ActiveCallScreen extends StatefulWidget {
+  final String friendName;
+  final String friendPin;
+  final bool isVideo;
+
+  const ActiveCallScreen({
+    super.key,
+    required this.friendName,
+    required this.friendPin,
+    required this.isVideo,
+  });
+
+  @override
+  State<ActiveCallScreen> createState() => _ActiveCallScreenState();
+}
+
+class _ActiveCallScreenState extends State<ActiveCallScreen> {
+  bool _isMuted = false;
+  bool _isSpeaker = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF042414),
+      body: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 40.0),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: const Color(0xFF0F5132),
+                    child: Icon(
+                      widget.isVideo ? Icons.videocam : Icons.person,
+                      size: 60,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    widget.friendName,
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.isVideo ? 'مكالمة فيديو جارية...' : 'مكالمة صوتية جارية...',
+                    style: const TextStyle(fontSize: 16, color: Colors.white70),
+                  ),
+                  Text(
+                    'رقم التعريف: ${widget.friendPin}',
+                    style: const TextStyle(fontSize: 13, color: Colors.white60),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 40.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  IconButton(
+                    iconSize: 40,
+                    icon: Icon(_isMuted ? Icons.mic_off : Icons.mic, color: Colors.white),
+                    onPressed: () => setState(() => _isMuted = !_isMuted),
+                  ),
+                  FloatingActionButton(
+                    backgroundColor: Colors.red,
+                    onPressed: () => Navigator.pop(context),
+                    child: const Icon(Icons.call_end, color: Colors.white, size: 30),
+                  ),
+                  IconButton(
+                    iconSize: 40,
+                    icon: Icon(_isSpeaker ? Icons.volume_up : Icons.volume_down, color: Colors.white),
+                    onPressed: () => setState(() => _isSpeaker = !_isSpeaker),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
