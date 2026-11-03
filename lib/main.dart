@@ -58,11 +58,20 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // صورة الخلفية مع وجود لون احتياطي في حال عدم تحميل الصورة
+          // خلفية الصورة الأصلية مباشرة من المستودع
           Positioned.fill(
-            child: Image.asset(
-              'assets/images/login_bg.png',
+            child: Image.network(
+              'https://raw.githubusercontent.com/Ath4U8/shlonkom/main/assets/images/login_bg.png',
               fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return Container(
+                  color: const Color(0xFF0F7A3E),
+                  child: const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
+                );
+              },
               errorBuilder: (context, error, stackTrace) {
                 return Container(color: const Color(0xFF0F7A3E));
               },
