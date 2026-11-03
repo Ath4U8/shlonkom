@@ -8,7 +8,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // تمديد الشاشة بالكامل خلف شريط النظام لإلغاء أي فراغ أبيض
+  // تمديد الشاشة بالكامل ومنع الفراغ الأبيض السفلي
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -73,7 +73,17 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  // تسجيل حساب جديد بدون فحص أو تسجيل الـ IP
+  // الانتقال للشاشة الرئيسية بعد نجاح الدخول
+  void _navigateToHome(String userName, String userEmail) {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HomeScreen(userName: userName, userEmail: userEmail),
+      ),
+    );
+  }
+
+  // تسجيل حساب جديد
   Future<void> _handleRegister() async {
     final email = _emailController.text.trim();
     final name = _nameController.text.trim();
@@ -86,17 +96,11 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _isLoading = true);
 
     try {
-      UserCredential userCredential;
-      if (FirebaseAuth.instance.currentUser == null) {
-        userCredential = await FirebaseAuth.instance.signInAnonymously();
-      } else {
-        userCredential = await FirebaseAuth.instance.signInAnonymously();
-      }
+      UserCredential userCredential = await FirebaseAuth.instance.signInAnonymously();
+      final userId = userCredential.user?.uid ?? email.replaceAll('.', '_');
 
-      final userId = userCredential.user?.uid ?? '';
-
-      // حفظ بيانات المستخدم في Firestore بدون حقل الـ IP
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+      // حفظ الحساب في Firestore
+      await FirebaseFirestore.instance.collection('users').doc(email).set({
         'uid': userId,
         'email': email,
         'name': name,
@@ -104,6 +108,7 @@ class _AuthScreenState extends State<AuthScreen> {
       }, SetOptions(merge: true));
 
       _showMessage('تم التسجيل بنجاح! أهلاً بك $name');
+      _navigateToHome(name, email);
     } catch (e) {
       _showMessage('حدث خطأ أثناء التسجيل: $e', isError: true);
     } finally {
@@ -111,9 +116,10 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  // تسجيل الدخول
+  // تسجيل الدخول والانتقال فوراً للشاشة الرئيسية
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
+    final name = _nameController.text.trim();
 
     if (email.isEmpty) {
       _showMessage('يرجى إدخال البريد الإلكتروني للدخول', isError: true);
@@ -126,7 +132,17 @@ class _AuthScreenState extends State<AuthScreen> {
       if (FirebaseAuth.instance.currentUser == null) {
         await FirebaseAuth.instance.signInAnonymously();
       }
+
+      // التحقق من بيانات المستخدم من Firestore
+      final doc = await FirebaseFirestore.instance.collection('users').doc(email).get();
+      String displayName = name.isNotEmpty ? name : 'مستخدم شلونكم';
+
+      if (doc.exists && doc.data() != null && doc.data()!['name'] != null) {
+        displayName = doc.data()!['name'];
+      }
+
       _showMessage('تم تسجيل الدخول بنجاح');
+      _navigateToHome(displayName, email);
     } catch (e) {
       _showMessage('حدث خطأ أثناء تسجيل الدخول: $e', isError: true);
     } finally {
@@ -134,7 +150,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  // نافذة استعادة الحساب عبر الإيميل
+  // نافذة استعادة الحساب
   void _showForgotPasswordDialog() {
     final TextEditingController resetEmailController = TextEditingController(text: _emailController.text);
 
@@ -152,7 +168,7 @@ class _AuthScreenState extends State<AuthScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'أدخل بريدك الإلكتروني المسجل لنرسل لك تفاصيل استعادة الحساب:',
+                'أدخل بريدك الإلكتروني المسجل للتحقق من وجود الحساب واستعادته:',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14),
               ),
@@ -186,14 +202,22 @@ class _AuthScreenState extends State<AuthScreen> {
                   return;
                 }
                 Navigator.pop(context);
+
                 try {
-                  await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-                  _showMessage('تم إرسال رابط استعادة الحساب إلى بريدك الإلكتروني بنجاح');
+                  final doc = await FirebaseFirestore.instance.collection('users').doc(email).get();
+                  if (doc.exists) {
+                    final registeredName = doc.data()?['name'] ?? 'المستخدم';
+                    _showMessage('تم العثور على الحساب باسم: $registeredName. يمكنك تسجيل الدخول الآن.');
+                    _emailController.text = email;
+                    _nameController.text = registeredName;
+                  } else {
+                    _showMessage('هذا البريد غير مسجل مسبقاً، يرجى الضغط على تسجيل جديد', isError: true);
+                  }
                 } catch (e) {
-                  _showMessage('تم تسجيل طلب الاسترجاع لهذا البريد: $email');
+                  _showMessage('تعذر التحقق من الحساب: $e', isError: true);
                 }
               },
-              child: const Text('إرسال', style: TextStyle(color: Colors.white)),
+              child: const Text('استعادة', style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -209,33 +233,46 @@ class _AuthScreenState extends State<AuthScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // الخلفية ممتدة حتى حواف الشاشة بالكامل لمنع أي فراغ
+          // الخلفية الرئيسية ممتدة لكامل الأبعاد
           Image.asset(
-            'assets/images/background.png',
+            'assets/background.png',
             fit: BoxFit.cover,
             width: double.infinity,
             height: double.infinity,
             errorBuilder: (context, error, stackTrace) {
-              return Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF0F5132), Color(0xFF052c17)],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
+              return Image.asset(
+                'assets/images/background.png',
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (context, err, st) {
+                  return Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF06331D), Color(0xFF021B0F)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
+                  );
+                },
               );
             },
           ),
 
+          // تدرج لوني خفيف فوق الصورة لضمان وضوح الحقول
+          Container(
+            color: Colors.black.withOpacity(0.15),
+          ),
+
           SafeArea(
-            bottom: true,
+            bottom: false,
             top: true,
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
               child: Column(
                 children: [
-                  const SizedBox(height: 280),
+                  const SizedBox(height: 340),
 
                   // حقل البريد الإلكتروني
                   _buildInputField(
@@ -271,7 +308,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                       icon: const Icon(Icons.login),
                       label: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                           : const Text(
                               'دخول',
                               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -327,7 +364,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -349,7 +386,7 @@ class _AuthScreenState extends State<AuthScreen> {
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withOpacity(0.12),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -366,6 +403,64 @@ class _AuthScreenState extends State<AuthScreen> {
           prefixIcon: Icon(icon, color: const Color(0xFF0F5132)),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        ),
+      ),
+    );
+  }
+}
+
+// الشاشة الرئيسية للتطبيق التي يفتح عليها المستخدم فور الدخول
+class HomeScreen extends StatelessWidget {
+  final String userName;
+  final String userEmail;
+
+  const HomeScreen({super.key, required this.userName, required this.userEmail});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('شلونكم', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: const Color(0xFF0F5132),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const AuthScreen()),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.check_circle_outline, color: Color(0xFF0F5132), size: 90),
+              const SizedBox(height: 20),
+              Text(
+                'أهلاً بك، $userName!',
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0F5132)),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                userEmail,
+                style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 30),
+              const Text(
+                'تم تسجيل دخولك بنجاح في تطبيق شلونكم.',
+                style: TextStyle(fontSize: 15, color: Colors.black87),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
