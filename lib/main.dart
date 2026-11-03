@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,7 +14,6 @@ void main() async {
     debugPrint('Firebase init: $e');
   }
 
-  // ملء الشاشة بالكامل دون أي فراغات
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -26,6 +26,11 @@ void main() async {
   );
 
   runApp(const ShlonkomApp());
+}
+
+// دالة توليد كلمة سر داخلية ثابتة لتجنيب المستخدم إدخال أو حفظ أي كلمة مرور
+String _generateInternalSecret(String email) {
+  return "Shlonkom_${email.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '')}_2026";
 }
 
 class ShlonkomApp extends StatelessWidget {
@@ -47,7 +52,7 @@ class ShlonkomApp extends StatelessWidget {
 }
 
 // -------------------------------------------------------------
-// 1. شاشة تسجيل الدخول والبداية
+// 1. شاشة تسجيل الدخول والواجهة الرئيسية (إيميل + اسم مستخدم فقط)
 // -------------------------------------------------------------
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -70,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // تسجيل الدخول بالإيميل واسم المستخدم فقط
+  // تسجيل الدخول بدون كلمة مرور
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim().toLowerCase();
     final username = _usernameController.text.trim();
@@ -95,6 +100,12 @@ class _LoginScreenState extends State<LoginScreen> {
         _msg('اسم المستخدم غير متطابق مع هذا البريد الإلكتروني', isError: true);
         return;
       }
+
+      // تسجيل دخول خلفي بدون علم المستخدم
+      final secret = _generateInternalSecret(email);
+      try {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: secret);
+      } catch (_) {}
 
       final userPin = data['pin'] ?? '000000';
 
@@ -154,12 +165,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 if (doc.exists) {
                   final uName = doc.data()?['username'] ?? '';
                   final uPin = doc.data()?['pin'] ?? '';
+
+                  try {
+                    await FirebaseAuth.instance.sendPasswordResetEmail(email: em);
+                  } catch (_) {}
+
                   _showRecoveryDetails(em, uName, uPin.toString());
                 } else {
                   _msg('هذا البريد غير مسجل مسبقاً', isError: true);
                 }
               } catch (e) {
-                _msg('حدث خطأ أثناء الاسترجاع', isError: true);
+                _msg('حدث خطأ أثناء الاسترجاع: $e', isError: true);
               }
             },
             child: const Text('استرجاع', style: TextStyle(color: Colors.white)),
@@ -188,12 +204,13 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         actions: [
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132)),
             onPressed: () {
               Navigator.pop(ctx);
               _emailController.text = email;
               _usernameController.text = username;
             },
-            child: const Text('تعبئة والدخول'),
+            child: const Text('تعبئة والدخول', style: TextStyle(color: Colors.white)),
           )
         ],
       ),
@@ -329,18 +346,24 @@ class _VerifyEmailForRegistrationScreenState extends State<VerifyEmailForRegistr
   final TextEditingController _emailController = TextEditingController();
   bool _emailSent = false;
   bool _isLoading = false;
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   void _sendVerification() async {
     final email = _emailController.text.trim().toLowerCase();
     if (email.isEmpty || !email.contains('@')) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل بريد إلكتروني صالح')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل بريداً إلكترونياً صالحاً')));
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      // التحقق من أن الإيميل غير محجوز مسبقاً
       final doc = await FirebaseFirestore.instance.collection('users').doc(email).get();
       if (doc.exists) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('هذا البريد مسجل مسبقاً، سجل الدخول مباشرة')));
@@ -348,17 +371,47 @@ class _VerifyEmailForRegistrationScreenState extends State<VerifyEmailForRegistr
         return;
       }
 
+      final secret = _generateInternalSecret(email);
+      UserCredential userCred;
+      try {
+        userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: secret);
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'email-already-in-use') {
+          userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: secret);
+        } else {
+          rethrow;
+        }
+      }
+
+      await userCred.user?.sendEmailVerification();
+
       setState(() {
         _emailSent = true;
         _isLoading = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(backgroundColor: Color(0xFF0F5132), content: Text('تم تأكيد طلبك! يمكنك الآن إكمال إنشاء حسابك')),
+        const SnackBar(backgroundColor: Color(0xFF0F5132), content: Text('تم إرسال رابط التأكيد إلى بريدك الإلكتروني! تفقد صندوق الوارد أو البريد غير المرغوب فيه.')),
       );
+
+      _timer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+        await FirebaseAuth.instance.currentUser?.reload();
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null && user.emailVerified) {
+          timer.cancel();
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CompleteRegistrationScreen(confirmedEmail: email),
+              ),
+            );
+          }
+        }
+      });
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء إرسال التأكيد: $e')));
     }
   }
 
@@ -397,26 +450,45 @@ class _VerifyEmailForRegistrationScreenState extends State<VerifyEmailForRegistr
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132), foregroundColor: Colors.white),
                   onPressed: _isLoading ? null : _sendVerification,
-                  child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('تأكيد البريد الإلكتروني'),
+                  child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('إرسال رابط تأكيد البريد'),
                 ),
               ),
             if (_emailSent) ...[
-              const Text('تم تأكيد البريد بنجاح! اضغط للمتابعة:', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+              const Card(
+                color: Color(0xFFE8F5E9),
+                child: Padding(
+                  padding: EdgeInsets.all(12.0),
+                  child: Text(
+                    'تم إرسال رابط التحقق إلى بريدك الإلكتروني.\nيرجى فتح إيميلك والضغط على الرابط، وسيقوم التطبيق بنقلك تلقائياً للخطوة التالية.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
               const SizedBox(height: 15),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF137547), foregroundColor: Colors.white),
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CompleteRegistrationScreen(confirmedEmail: _emailController.text.trim().toLowerCase()),
-                      ),
-                    );
+                  onPressed: () async {
+                    await FirebaseAuth.instance.currentUser?.reload();
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null && user.emailVerified) {
+                      _timer?.cancel();
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CompleteRegistrationScreen(confirmedEmail: _emailController.text.trim().toLowerCase()),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('لم يتم تأكيد الرابط بعد، يرجى الضغط عليه في رسالة بريدك الإلكتروني')),
+                      );
+                    }
                   },
-                  child: const Text('متابعة لإنشاء الحساب (الخطوة الأخيرة)'),
+                  child: const Text('أكدت الرابط، اضغط للمتابعة'),
                 ),
               )
             ]
@@ -428,7 +500,7 @@ class _VerifyEmailForRegistrationScreenState extends State<VerifyEmailForRegistr
 }
 
 // -------------------------------------------------------------
-// 3. شاشة إنشاء الحساب (خانة الإيميل ثابتة + خانة اسم مستخدم فريد + رقم PIN)
+// 3. شاشة إنشاء الحساب (البريد ثابت + اسم مستخدم فريد + رقم PIN)
 // -------------------------------------------------------------
 class CompleteRegistrationScreen extends StatefulWidget {
   final String confirmedEmail;
@@ -442,7 +514,6 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
   final TextEditingController _usernameController = TextEditingController();
   bool _isLoading = false;
 
-  // توليد رقم تعريف شخصي مكون من 6 أرقام عشوائية
   String _generatePIN() {
     final random = Random();
     int number = 100000 + random.nextInt(900000);
@@ -460,7 +531,6 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
     setState(() => _isLoading = true);
 
     try {
-      // التأكد الصارم من عدم تكرار اسم المستخدم
       final query = await FirebaseFirestore.instance
           .collection('users')
           .where('username', isEqualTo: username)
@@ -476,7 +546,6 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
 
       final pin = _generatePIN();
 
-      // حفظ الحساب بشكل نهائي وثابت
       await FirebaseFirestore.instance.collection('users').doc(widget.confirmedEmail).set({
         'email': widget.confirmedEmail,
         'username': username,
@@ -484,7 +553,6 @@ class _CompleteRegistrationScreenState extends State<CompleteRegistrationScreen>
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // حفظ فهرس رقم التعريف لسهولة وسرعة البحث
       await FirebaseFirestore.instance.collection('pins').doc(pin).set({
         'pin': pin,
         'email': widget.confirmedEmail,
@@ -604,7 +672,6 @@ class MainChatHomeScreen extends StatefulWidget {
 }
 
 class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
-  // نافذة البحث وإضافة جهة اتصال عبر رقم التعريف الشخصي
   void _showAddContactDialog() {
     final TextEditingController searchPinController = TextEditingController();
     Map<String, dynamic>? foundUser;
@@ -637,8 +704,6 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
-
-                  // زر البحث يظهر دائماً وبشكل واضح
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -688,13 +753,10 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
                             },
                     ),
                   ),
-
                   if (searchError.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(searchError, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                   ],
-
-                  // إظهار بطاقة الصديق عند العثور عليه
                   if (foundUser != null) ...[
                     const SizedBox(height: 16),
                     Container(
@@ -751,6 +813,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () {
+              FirebaseAuth.instance.signOut();
               Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
             },
           )
@@ -818,7 +881,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
 }
 
 // -------------------------------------------------------------
-// 5. شاشة الدردشة والمراسلة (يظهر فوق في الـ AppBar رقم التعريف الشخصي للصديق)
+// 5. شاشة الدردشة والمحادثة مع الصديق
 // -------------------------------------------------------------
 class ChatConversationScreen extends StatelessWidget {
   final String friendUsername;
