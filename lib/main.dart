@@ -263,3 +263,72 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
             const Text('Designed by: Atheer Sami', style: TextStyle(color: Colors.black45, fontSize: 13, fontWeight: FontWeight.w600)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// 2. شاشة التحقق من كود الـ OTP
+// -------------------------------------------------------------
+class OtpVerificationScreen extends StatelessWidget {
+  final String email;
+  final String sentOtp;
+
+  const OtpVerificationScreen({super.key, required this.email, required this.sentOtp});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('التحقق من الرمز')),
+      body: Center(
+        child: Text('شاشة التحقق للإيميل: $email'),
+      ),
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// 3. شاشة تسجيل الدخول للعائدين
+// -------------------------------------------------------------
+class ReturningLoginScreen extends StatelessWidget {
+  final String? lastEmail;
+
+  const ReturningLoginScreen({super.key, this.lastEmail});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('تسجيل الدخول')),
+      body: Center(
+        child: Text('شاشة العائدين - الإيميل الأخير: ${lastEmail ?? "غير متوفر"}'),
+      ),
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// 4. الشاشة الرئيسية للدردشة
+// -------------------------------------------------------------
+class MainChatHomeScreen extends StatelessWidget {
+  final String myEmail;
+  final String myUsername;
+  final String myPin;
+
+  const MainChatHomeScreen({
+    super.key,
+    required this.myEmail,
+    required this.myUsername,
+    required this.myPin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('الرئيسية')),
+      body: Center(
+        child: Text('مرحباً بك يا $myUsername'),
+      ),
+    );
+  }
+}
