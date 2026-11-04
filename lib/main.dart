@@ -429,7 +429,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
     if (fullName.isEmpty || username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى ملء جميع الحقول المطلوب')),
+        const SnackBar(content: Text('يرجى ملء جميع الحقول المطلوبة')),
       );
       return;
     }
@@ -820,7 +820,7 @@ class _ReturningLoginScreenState extends State<ReturningLoginScreen> {
 }
 
 // -------------------------------------------------------------
-// 5. الشاشة الرئيسية للدردشة والمحادثات
+// 5. الشاشة الرئيسية للدردشة (مع حقل إضافة صديق بالـ PIN وحذف زر الخروج الخاطئ)
 // -------------------------------------------------------------
 class MainChatHomeScreen extends StatefulWidget {
   final String myEmail;
@@ -839,16 +839,82 @@ class MainChatHomeScreen extends StatefulWidget {
 }
 
 class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('شلونكم - ${widget.myUsername}'),
-        backgroundColor: const Color(0xFF0F5132),
-        foregroundColor: Colors.white,
+  final TextEditingController _friendPinController = TextEditingController();
+  bool _isSearching = false;
+
+  void _searchAndAddFriend() async {
+    final targetPin = _friendPinController.text.trim();
+    if (targetPin.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إدخال رقم PIN صحيح مكون من 6 أرقام')),
+      );
+      return;
+    }
+
+    if (targetPin == widget.myPin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكنك إضافة نفسك كصديق')),
+      );
+      return;
+    }
+
+    setState(() => _isSearching = true);
+
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('pin', isEqualTo: targetPin)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final friendData = querySnapshot.docs.first.data();
+        final friendEmail = friendData['email'];
+        final friendName = friendData['username'] ?? 'صديق';
+
+        if (mounted) {
+          _friendPinController.clear();
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => IndividualChatScreen(
+                myEmail: widget.myEmail,
+                friendEmail: friendEmail,
+                friendName: friendName,
+              ),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('لم يتم العثور على أي مستخدم بهذا الـ PIN')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ أثناء البحث: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSearching = false);
+    }
+  }
+
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تسجيل الخروج', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+        content: const Text('هل أنت متأكد من رغبتك في تسجيل الخروج من التطبيق؟'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
@@ -860,36 +926,116 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
                 );
               }
             },
-          )
+            child: const Text('خروج'),
+          ),
         ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.mark_chat_read_rounded, size: 80, color: Color(0xFF0F5132)),
-            const SizedBox(height: 20),
-            Text('مرحباً بك يا ${widget.myUsername}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text('رقم PIN الخاص بك: ${widget.myPin}', style: const TextStyle(fontSize: 16, color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
-            const SizedBox(height: 25),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132), foregroundColor: Colors.white),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => IndividualChatScreen(
-                      myEmail: widget.myEmail,
-                      friendEmail: 'friend@shlonkom.com',
-                      friendName: 'صديق تجريبي',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        // منع الخروج العشوائي عند الضغط على زر الرجوع في الهاتف
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false, // تم حذف سهم الرجوع المزعج تماماً
+          title: Text('شلونكم - ${widget.myUsername}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          backgroundColor: const Color(0xFF0F5132),
+          foregroundColor: Colors.white,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'تسجيل الخروج',
+              onPressed: _confirmLogout,
+            )
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // بطاقة معلومات حسابي ورقم الـ PIN
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F5132).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: const Color(0xFF0F5132).withOpacity(0.2)),
+                ),
+                child: Column(
+                  children: [
+                    const Text('رقم التعريف الشخصي (PIN) الخاص بك:', style: TextStyle(fontSize: 13, color: Colors.black87)),
+                    const SizedBox(height: 5),
+                    Text(widget.myPin, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF0F5132), letterSpacing: 3)),
+                    const SizedBox(height: 3),
+                    const Text('شارك هذا الرقم مع أصدقائك ليتمكنوا من مراسلتك.', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 25),
+              
+              // قسم إضافة صديق برقم الـ PIN
+              const Text('إضافة صديق جديد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F5132))),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _friendPinController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      decoration: const InputDecoration(
+                        counterText: '',
+                        hintText: 'أدخل رقم PIN الخاص للصديق (6 أرقام)',
+                        prefixIcon: Icon(Icons.person_add_alt_1, color: Color(0xFF0F5132)),
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                      ),
                     ),
                   ),
-                );
-              },
-              child: const Text('فتح محادثة تجريبية (لاختبار الشريط والتواجد)'),
-            ),
-          ],
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F5132),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: _isSearching ? null : _searchAndAddFriend,
+                      child: _isSearching
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text('بحث ومراسلة', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
+              
+              // قائمة المحادثات
+              const Text('المحادثات السابقة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F5132))),
+              const SizedBox(height: 10),
+              const Expanded(
+                child: Center(
+                  child: Text('لا توجد محادثات نشطة حالياً.\nأضف صديقاً باستخدام رقم الـ PIN أعلاه لبدء المراسلة!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 14)),
+                ),
+              ),
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: Text('Designed by: Atheer Sami', style: TextStyle(color: Colors.black45, fontSize: 13, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
