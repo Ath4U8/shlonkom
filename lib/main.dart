@@ -59,9 +59,6 @@ class ShlonkomApp extends StatelessWidget {
   }
 }
 
-// -------------------------------------------------------------
-// شاشة الترحيب الافتتاحية مع علم العراق والنص المطلوب
-// -------------------------------------------------------------
 class WelcomeSplashScreen extends StatefulWidget {
   const WelcomeSplashScreen({super.key});
 
@@ -166,9 +163,6 @@ class _WelcomeSplashScreenState extends State<WelcomeSplashScreen> {
   }
 }
 
-// -------------------------------------------------------------
-// 1. شاشة تسجيل جديد بالإيميل مع إرسال رابط التفعيل
-// -------------------------------------------------------------
 class RegisterWithEmailScreen extends StatefulWidget {
   const RegisterWithEmailScreen({super.key});
 
@@ -316,9 +310,6 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
   }
 }
 
-// -------------------------------------------------------------
-// 2. شاشة تأكيد النقر على رابط التفعيل
-// -------------------------------------------------------------
 class VerifyEmailLinkScreen extends StatefulWidget {
   final String email;
 
@@ -420,9 +411,6 @@ class _VerifyEmailLinkScreenState extends State<VerifyEmailLinkScreen> {
   }
 }
 
-// -------------------------------------------------------------
-// 3. شاشة إعداد الملف الشخصي وتوليد الرقم الشخصي الثابت
-// -------------------------------------------------------------
 class CreateProfileScreen extends StatefulWidget {
   final String email;
 
@@ -623,9 +611,6 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   }
 }
 
-// -------------------------------------------------------------
-// 4. شاشة تسجيل الدخول للعائدين
-// -------------------------------------------------------------
 class ReturningLoginScreen extends StatefulWidget {
   final String? lastEmail;
 
@@ -767,9 +752,6 @@ class _ReturningLoginScreenState extends State<ReturningLoginScreen> {
   }
 }
 
-// -------------------------------------------------------------
-// 5. الشاشة الرئيسية وإضافة الأصدقاء
-// -------------------------------------------------------------
 class MainChatHomeScreen extends StatefulWidget {
   final String myEmail;
   final String myUsername;
@@ -1034,9 +1016,6 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
   }
 }
 
-// -------------------------------------------------------------
-// 6. شاشة المحادثة الفردية (أصوات النظام المدمجة وتنبيهات بدون حزم خارجية)
-// -------------------------------------------------------------
 class IndividualChatScreen extends StatefulWidget {
   final String myEmail;
   final String myUsername;
