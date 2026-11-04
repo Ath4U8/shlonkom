@@ -1176,7 +1176,6 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                     final picker = ImagePicker();
                     final image = await picker.pickImage(source: ImageSource.gallery);
                     if (image != null) {
-                      // إرسال المسار المحلي للصورة أو الملف لكي تظهر مباشرة
                       _sendMessage(
                         customText: '📸 صورة مرفقة',
                         messageType: 'image',
@@ -1235,7 +1234,6 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
   void _sendVoiceNote() {
     SystemSound.play(SystemSoundType.click);
     HapticFeedback.heavyImpact();
-    // إرسال بصمة صوتية فعلية مع مشغل مرئي مبسط
     _sendMessage(
       customText: '🎤 بصمة صوتية (0:05 ثانية)',
       messageType: 'voice',
@@ -1415,7 +1413,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                                             SystemSound.play(SystemSoundType.click);
                                             ScaffoldMessenger.of(context).showSnackBar(
                                               const SnackBar(content: Text('جاري تشغيل البصمة الصوتية... 🔊')),
-                                            );
+                                           );
                                           },
                                         ),
                                         const Text(' ▶ ▬▬▬▬ஜ 0:05', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
@@ -1445,7 +1443,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                         onPressed: _showAttachmentSheet,
                       ),
                       IconButton(
-                        icon: constIcon(Icons.emoji_emotions, color: Color(0xFF0F5132), size: 26),
+                        icon: const Icon(Icons.emoji_emotions, color: Color(0xFF0F5132), size: 26), // تم التصحيح هنا
                         onPressed: _showStickersSheet,
                       ),
                       Expanded(
