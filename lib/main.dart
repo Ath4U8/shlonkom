@@ -687,6 +687,60 @@ class _ReturningLoginScreenState extends State<ReturningLoginScreen> {
     }
   }
 
+  // ميزة نسيت الرقم الشخصي عبر البريد الإلكتروني
+  void _recoverPinViaEmail() async {
+    final email = _emailController.text.trim().toLowerCase();
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى كتابة بريدك الإلكتروني في حقل البريد أولاً')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(email).get();
+      if (doc.exists && doc.data()?['personalPin'] != null) {
+        final pin = doc.data()?['personalPin'];
+        
+        // إرسال تنبيه بالبريد أو إظهار نافذة تأكيد وإرسال إشعار بريدي عبر Firebase Auth
+        await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+
+        if (mounted) {
+          showDialog(
+            context,
+            builder: (context) => AlertDialog(
+              title: const Text('استعادة الرقم الشخصي', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+              content: Text('تم العثور على حسابك.\nرقمك الشخصي هو: $pin\n\nكما تم إرسال رسالة تحقق إلى بريدك الإلكتروني: $email'),
+              actions: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132), foregroundColor: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('حسناً'),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('هذا البريد غير مسجل مسبقاً في قاعدة البيانات')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ أثناء الاستعادة: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -724,6 +778,13 @@ class _ReturningLoginScreenState extends State<ReturningLoginScreen> {
                   prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF0F5132)),
                   border: OutlineInputBorder(),
                   counterText: '',
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: _isLoading ? null : _recoverPinViaEmail,
+                  child: const Text('نسيت الرقم الشخصي؟', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
                 ),
               ),
               const Spacer(),
@@ -1112,17 +1173,25 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
               children: [
                 _buildAttachOption(Icons.image, 'صورة', () async {
                   Navigator.pop(context);
-                  final picker = ImagePicker();
-                  final image = await picker.pickImage(source: ImageSource.gallery);
-                  if (image != null) {
-                    _sendMessage(customText: '[صورة مرفقة]', messageType: 'image');
+                  try {
+                    final picker = ImagePicker();
+                    final image = await picker.pickImage(source: ImageSource.gallery);
+                    if (image != null) {
+                      _sendMessage(customText: '📸 صورة مرفقة (${image.name})', messageType: 'image');
+                    }
+                  } catch (e) {
+                    debugPrint('Image pick error: $e');
                   }
                 }),
                 _buildAttachOption(Icons.insert_drive_file, 'ملف / مستند', () async {
                   Navigator.pop(context);
-                  FilePickerResult? result = await FilePicker.platform.pickFiles();
-                  if (result != null) {
-                    _sendMessage(customText: '📁 ملف: ${result.files.single.name}', messageType: 'file');
+                  try {
+                    FilePickerResult? result = await FilePicker.platform.pickFiles();
+                    if (result != null) {
+                      _sendMessage(customText: '📁 ملف: ${result.files.single.name}', messageType: 'file');
+                    }
+                  } catch (e) {
+                    debugPrint('File pick error: $e');
                   }
                 }),
                 _buildAttachOption(Icons.location_on, 'الموقع', () {
@@ -1156,9 +1225,11 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
   }
 
   void _sendVoiceNote() {
-    _sendMessage(customText: '🎤 بصمة صوتية (0:05 ثانية)', messageType: 'voice');
+    SystemSound.play(SystemSoundType.click);
+    HapticFeedback.heavyImpact();
+    _sendMessage(customText: '🎤 بصمة صوتية نشطة (0:05 ثانية)', messageType: 'voice');
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم إرسال البصمة الصوتية بنجاح 🎤')),
+      const SnackBar(content: Text('تم إرسال البصمة الصوتية مع التنبيه الصوتي بنجاح 🎤')),
     );
   }
 
@@ -1344,7 +1415,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                       IconButton(
                         icon: const Icon(Icons.mic, color: Color(0xFF0F5132), size: 26),
                         onPressed: _sendVoiceNote,
-                        tooltip: 'إرسال بصمة صوتية',
+                        tooltip: 'إرسال بصمة صوتية وتنبيه',
                       ),
                       CircleAvatar(
                         backgroundColor: const Color(0xFF0F5132),
