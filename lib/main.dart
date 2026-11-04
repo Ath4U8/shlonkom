@@ -687,7 +687,6 @@ class _ReturningLoginScreenState extends State<ReturningLoginScreen> {
     }
   }
 
-  // ميزة نسيت الرقم الشخصي عبر البريد الإلكتروني
   void _recoverPinViaEmail() async {
     final email = _emailController.text.trim().toLowerCase();
     if (email.isEmpty || !email.contains('@')) {
@@ -704,12 +703,11 @@ class _ReturningLoginScreenState extends State<ReturningLoginScreen> {
       if (doc.exists && doc.data()?['personalPin'] != null) {
         final pin = doc.data()?['personalPin'];
         
-        // إرسال تنبيه بالبريد أو إظهار نافذة تأكيد وإرسال إشعار بريدي عبر Firebase Auth
         await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
 
         if (mounted) {
           showDialog(
-            context,
+            context: context,
             builder: (context) => AlertDialog(
               title: const Text('استعادة الرقم الشخصي', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
               content: Text('تم العثور على حسابك.\nرقمك الشخصي هو: $pin\n\nكما تم إرسال رسالة تحقق إلى بريدك الإلكتروني: $email'),
