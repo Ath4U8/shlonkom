@@ -9,7 +9,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1036,7 +1035,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
 }
 
 // -------------------------------------------------------------
-// 6. شاشة المحادثة الفردية (خلفية اوف وايت + علامة مائية + أصوات + مرفقات + بصمات)
+// 6. شاشة المحادثة الفردية (أصوات النظام المدمجة وتنبيهات بدون حزم خارجية)
 // -------------------------------------------------------------
 class IndividualChatScreen extends StatefulWidget {
   final String myEmail;
@@ -1296,7 +1295,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                       if (docs.length > _previousMessageCount && _previousMessageCount != 0) {
                         final latestMsg = docs.first.data() as Map<String, dynamic>;
                         if (latestMsg['senderEmail'] != widget.myEmail) {
-                          FlutterRingtonePlayer().playNotification();
+                          SystemSound.play(SystemSoundType.click);
                           HapticFeedback.vibrate();
                         }
                       }
