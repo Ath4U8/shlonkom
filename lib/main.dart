@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -37,6 +36,11 @@ void main() async {
 
 String _generateInternalSecret(String email) {
   return "Shlonkom_${email.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '')}_2026";
+}
+
+String _generateUniquePin() {
+  final random = Random();
+  return (100000 + random.nextInt(900000)).toString();
 }
 
 class ShlonkomApp extends StatelessWidget {
@@ -169,7 +173,6 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
     try {
       final otp = _generateOtp();
 
-      // حفظ الرمز في الفايرستور
       await FirebaseFirestore.instance.collection('otp_codes').doc(email).set({
         'code': otp,
         'createdAt': FieldValue.serverTimestamp(),
@@ -185,7 +188,6 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
       }
 
       if (mounted) {
-        // إظهار تنبيه مؤقت برمز الـ OTP للتجربة السريعة والتأكد الفوري
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('رمز التحقق الخاص بك هو: $otp'),
@@ -194,7 +196,6 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
           ),
         );
 
-        // الانتقال الشامل لشاشة التحقق مع منع حدوث الشاشة البيضاء
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -286,7 +287,7 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
 }
 
 // -------------------------------------------------------------
-// 2. شاشة التحقق من كود الـ OTP (مفعلة بالكامل لتجنب الشاشة البيضاء)
+// 2. شاشة التحقق من كود الـ OTP
 // -------------------------------------------------------------
 class OtpVerificationScreen extends StatefulWidget {
   final String email;
@@ -311,45 +312,17 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
-
-    try {
-      // التحقق من تطابق الرمز المدخل مع الرمز المرسل
-      if (enteredOtp == widget.sentOtp) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('saved_email', widget.email);
-        await prefs.setString('saved_username', widget.email.split('@')[0]);
-        await prefs.setString('saved_pin', '0000');
-        await prefs.setInt('last_active_time', DateTime.now().millisecondsSinceEpoch);
-
-        if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (_) => MainChatHomeScreen(
-                myEmail: widget.email,
-                myUsername: widget.email.split('@')[0],
-                myPin: '0000',
-              ),
-            ),
-            (route) => false,
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('رمز التحقق غير صحيح، حاول مرة أخرى')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('حدث خطأ: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    if (enteredOtp == widget.sentOtp) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CreateProfileScreen(email: widget.email),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('رمز التحقق غير صحيح، حاول مرة أخرى')),
+      );
     }
   }
 
@@ -402,10 +375,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 onPressed: _isLoading ? null : _verifyOtp,
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('تأكيد الرمز والدخول', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                    : const Text('تأكيد الرمز والمتابعة', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
               ),
             ),
             const SizedBox(height: 15),
+            const Text('Designed by: Atheer Sami', style: TextStyle(color: Colors.black45, fontSize: 13, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -414,28 +388,441 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 }
 
 // -------------------------------------------------------------
-// 3. شاشة تسجيل الدخول للعائدين
+// 3. شاشة إنشاء الملف الشخصي (الاسم، اسم المستخدم، الصورة، الـ PIN التلقائي)
 // -------------------------------------------------------------
-class ReturningLoginScreen extends StatelessWidget {
-  final String? lastEmail;
+class CreateProfileScreen extends StatefulWidget {
+  final String email;
 
-  const ReturningLoginScreen({super.key, this.lastEmail});
+  const CreateProfileScreen({super.key, required this.email});
+
+  @override
+  State<CreateProfileScreen> createState() => _CreateProfileScreenState();
+}
+
+class _CreateProfileScreenState extends State<CreateProfileScreen> {
+  final TextEditingController _fullNameController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  late String _generatedPin;
+  File? _selectedImage;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _generatedPin = _generateUniquePin();
+    _usernameController.text = widget.email.split('@')[0];
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() {
+        _selectedImage = File(picked.path);
+      });
+    }
+  }
+
+  void _saveProfileAndProceed() async {
+    final fullName = _fullNameController.text.trim();
+    final username = _usernameController.text.trim();
+
+    if (fullName.isEmpty || username.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى ملء جميع الحقول المطلوب')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(widget.email).set({
+        'email': widget.email,
+        'fullName': fullName,
+        'username': username,
+        'pin': _generatedPin,
+        'createdAt': FieldValue.serverTimestamp(),
+        'isOnline': true,
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_email', widget.email);
+      await prefs.setString('saved_username', username);
+      await prefs.setString('saved_pin', _generatedPin);
+      await prefs.setInt('last_active_time', DateTime.now().millisecondsSinceEpoch);
+
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MainChatHomeScreen(
+              myEmail: widget.email,
+              myUsername: username,
+              myPin: _generatedPin,
+            ),
+          ),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ أثناء حفظ البيانات: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('تسجيل الدخول')),
-      body: Center(
-        child: Text('شاشة العائدين - الإيميل الأخير: ${lastEmail ?? "غير متوفر"}'),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text('إعداد الملف الشخصي', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold, fontSize: 18)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: _pickImage,
+              child: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: const Color(0xFF0F5132).withOpacity(0.1),
+                    backgroundImage: _selectedImage != null ? FileImage(_selectedImage!) : null,
+                    child: _selectedImage == null
+                        ? const Icon(Icons.person, size: 60, color: Color(0xFF0F5132))
+                        : null,
+                  ),
+                  const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Color(0xFF0F5132),
+                    child: Icon(Icons.camera_alt, size: 18, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 25),
+            TextField(
+              controller: _fullNameController,
+              decoration: const InputDecoration(
+                labelText: 'الاسم الكامل',
+                prefixIcon: Icon(Icons.badge_outlined, color: Color(0xFF0F5132)),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _usernameController,
+              decoration: const InputDecoration(
+                labelText: 'اسم المستخدم',
+                prefixIcon: Icon(Icons.alternate_email, color: Color(0xFF0F5132)),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F5132).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF0F5132).withOpacity(0.3)),
+              ),
+              child: Column(
+                children: [
+                  const Text('رقم التعريف الشخصي (PIN) الخاص بك:', style: TextStyle(fontSize: 13, color: Colors.black87)),
+                  const SizedBox(height: 5),
+                  Text(_generatedPin, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF0F5132), letterSpacing: 4)),
+                  const SizedBox(height: 5),
+                  const Text('ملاحظة: هذا الرقم ثابت وبمثابة رقم هاتفك الدائم داخل التطبيق.', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: Colors.grey)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F5132),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                ),
+                onPressed: _isLoading ? null : _saveProfileAndProceed,
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('حفظ والدخول والتفعيل', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 15),
+            const Text('Designed by: Atheer Sami', style: TextStyle(color: Colors.black45, fontSize: 13, fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }
 }
 
 // -------------------------------------------------------------
-// 4. الشاشة الرئيسية للدردشة
+// 4. شاشة تسجيل الدخول للعائدين (مع زر "نسيت بياناتك؟")
 // -------------------------------------------------------------
-class MainChatHomeScreen extends StatelessWidget {
+class ReturningLoginScreen extends StatefulWidget {
+  final String? lastEmail;
+
+  const ReturningLoginScreen({super.key, this.lastEmail});
+
+  @override
+  State<ReturningLoginScreen> createState() => _ReturningLoginScreenState();
+}
+
+class _ReturningLoginScreenState extends State<ReturningLoginScreen> {
+  late TextEditingController _emailController;
+  final TextEditingController _pinController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.lastEmail ?? '');
+  }
+
+  void _loginUser() async {
+    final email = _emailController.text.trim().toLowerCase();
+    final pin = _pinController.text.trim();
+
+    if (email.isEmpty || pin.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى إدخال البريد ورقم الـ PIN المكون من 6 أرقام')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(email).get();
+
+      if (doc.exists && doc.data()?['pin'] == pin) {
+        final username = doc.data()?['username'] ?? email.split('@')[0];
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('saved_email', email);
+        await prefs.setString('saved_username', username);
+        await prefs.setString('saved_pin', pin);
+        await prefs.setInt('last_active_time', DateTime.now().millisecondsSinceEpoch);
+
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MainChatHomeScreen(
+                myEmail: email,
+                myUsername: username,
+                myPin: pin,
+              ),
+            ),
+            (route) => false,
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('بيانات الدخول غير صحيحة')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showForgotPasswordDialog() {
+    final forgotEmailController = TextEditingController();
+    final forgotOtpController = TextEditingController();
+    String? generatedOtp;
+    bool otpSent = false;
+    bool otpVerified = false;
+    String? retrievedPin;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('استعادة البيانات', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!otpSent) ...[
+                    const Text('أدخل بريدك الإلكتروني لاستعادة رقم التعريف الخاص بك:'),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: forgotEmailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(labelText: 'البريد الإلكتروني'),
+                    ),
+                  ] else if (otpSent && !otpVerified) ...[
+                    Text('تم إرسال رمز الـ OTP إلى: ${forgotEmailController.text}'),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: forgotOtpController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(labelText: 'رمز التحقق (OTP)'),
+                    ),
+                  ] else if (otpVerified) ...[
+                    const Icon(Icons.check_circle, color: Colors.green, size: 50),
+                    const SizedBox(height: 10),
+                    Text('البريد: ${forgotEmailController.text}'),
+                    const SizedBox(height: 5),
+                    Text('رقم PIN الخاص بك: $retrievedPin', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F5132))),
+                  ],
+                ],
+              ),
+              actions: [
+                if (!otpSent)
+                  ElevatedButton(
+                    onPressed: () async {
+                      final email = forgotEmailController.text.trim().toLowerCase();
+                      if (email.contains('@')) {
+                        generatedOtp = (100000 + Random().nextInt(900000)).toString();
+                        setDialogState(() {
+                          otpSent = true;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('رمز الـ OTP للاستعادة: $generatedOtp')),
+                        );
+                      }
+                    },
+                    child: const Text('إرسال الرمز'),
+                  )
+                else if (otpSent && !otpVerified)
+                  ElevatedButton(
+                    onPressed: () async {
+                      if (forgotOtpController.text.trim() == generatedOtp) {
+                        final email = forgotEmailController.text.trim().toLowerCase();
+                        final doc = await FirebaseFirestore.instance.collection('users').doc(email).get();
+                        if (doc.exists) {
+                          setDialogState(() {
+                            retrievedPin = doc.data()?['pin'] ?? 'غير متوفر';
+                            otpVerified = true;
+                          });
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('الحساب غير موجود')),
+                          );
+                        }
+                      }
+                    },
+                    child: const Text('تأكيد الرمز'),
+                  )
+                else if (otpVerified)
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132), foregroundColor: Colors.white),
+                    onPressed: () {
+                      _emailController.text = forgotEmailController.text.trim();
+                      _pinController.text = retrievedPin ?? '';
+                      Navigator.pop(context);
+                    },
+                    child: const Text('تعبئة بعدها دخول'),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text('تسجيل الدخول', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+        child: Column(
+          children: [
+            const SizedBox(height: 20),
+            TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'البريد الإلكتروني',
+                prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF0F5132)),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _pinController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'رقم التعريف الشخصي (PIN)',
+                prefixIcon: Icon(Icons.lock_outline, color: Color(0xFF0F5132)),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _showForgotPasswordDialog,
+                child: const Text('نسيت بياناتك؟', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const Spacer(),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F5132),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                ),
+                onPressed: _isLoading ? null : _loginUser,
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('تسجيل الدخول', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 15),
+            const Text('Designed by: Atheer Sami', style: TextStyle(color: Colors.black45, fontSize: 13, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// 5. الشاشة الرئيسية للدردشة والمحادثات
+// -------------------------------------------------------------
+class MainChatHomeScreen extends StatefulWidget {
   final String myEmail;
   final String myUsername;
   final String myPin;
@@ -448,24 +835,178 @@ class MainChatHomeScreen extends StatelessWidget {
   });
 
   @override
+  State<MainChatHomeScreen> createState() => _MainChatHomeScreenState();
+}
+
+class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('مرحباً بك، $myUsername'),
+        title: Text('شلونكم - ${widget.myUsername}'),
         backgroundColor: const Color(0xFF0F5132),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+              if (context.mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const RegisterWithEmailScreen()),
+                  (route) => false,
+                );
+              }
+            },
+          )
+        ],
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.check_circle_outline, size: 80, color: Color(0xFF0F5132)),
+            const Icon(Icons.mark_chat_read_rounded, size: 80, color: Color(0xFF0F5132)),
             const SizedBox(height: 20),
-            Text('تم تسجيل الدخول بنجاح!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.grey[800])),
-            const SizedBox(height: 10),
-            Text('الإيميل: $myEmail', style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+            Text('مرحباً بك يا ${widget.myUsername}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text('رقم PIN الخاص بك: ${widget.myPin}', style: const TextStyle(fontSize: 16, color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+            const SizedBox(height: 25),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132), foregroundColor: Colors.white),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => IndividualChatScreen(
+                      myEmail: widget.myEmail,
+                      friendEmail: 'friend@shlonkom.com',
+                      friendName: 'صديق تجريبي',
+                    ),
+                  ),
+                );
+              },
+              child: const Text('فتح محادثة تجريبية (لاختبار الشريط والتواجد)'),
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// 6. شاشة المحادثة الفردية وشريط المحادثة العلوي مع السمايل التفاعلي
+// -------------------------------------------------------------
+class IndividualChatScreen extends StatefulWidget {
+  final String myEmail;
+  final String friendEmail;
+  final String friendName;
+
+  const IndividualChatScreen({
+    super.key,
+    required this.myEmail,
+    required this.friendEmail,
+    required this.friendName,
+  });
+
+  @override
+  State<IndividualChatScreen> createState() => _IndividualChatScreenState();
+}
+
+class _IndividualChatScreenState extends State<IndividualChatScreen> with WidgetsBindingObserver {
+  bool _isFriendInChat = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      setState(() => _isFriendInChat = true);
+    } else {
+      setState(() => _isFriendInChat = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0F5132),
+        foregroundColor: Colors.white,
+        title: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.white24,
+              child: Text(widget.friendName[0], style: const TextStyle(color: Colors.white)),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.friendName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Row(
+                  children: [
+                    Text(
+                      _isFriendInChat ? '🟢😄' : '💤😴',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _isFriendInChat ? 'متواجد الآن' : 'غير متواجد',
+                      style: const TextStyle(fontSize: 11, color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          const Expanded(
+            child: Center(
+              child: Text('منطقة الرسائل والمحادثة التفاعلية'),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            color: Colors.grey[100],
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'اكتب رسالة...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(20)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                CircleAvatar(
+                  backgroundColor: const Color(0xFF0F5132),
+                  child: IconButton(
+                    icon: const Icon(Icons.send, color: Colors.white, size: 18),
+                    onPressed: () {},
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
