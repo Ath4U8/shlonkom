@@ -158,7 +158,9 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
   void _sendOtpCode() async {
     final email = _emailController.text.trim().toLowerCase();
     if (email.isEmpty || !email.contains('@')) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('أدخل بريداً إلكترونياً صالحاً')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أدخل بريداً إلكترونياً صالحاً')),
+      );
       return;
     }
 
@@ -167,6 +169,7 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
     try {
       final otp = _generateOtp();
 
+      // حفظ الرمز في الفايرستور
       await FirebaseFirestore.instance.collection('otp_codes').doc(email).set({
         'code': otp,
         'createdAt': FieldValue.serverTimestamp(),
@@ -182,6 +185,16 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
       }
 
       if (mounted) {
+        // إظهار تنبيه مؤقت برمز الـ OTP للتجربة السريعة والتأكد الفوري
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('رمز التحقق الخاص بك هو: $otp'),
+            duration: const Duration(seconds: 8),
+            backgroundColor: Colors.green[800],
+          ),
+        );
+
+        // الانتقال الشامل لشاشة التحقق مع منع حدوث الشاشة البيضاء
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -190,7 +203,11 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء إرسال الرمز: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ أثناء إرسال الرمز: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -269,20 +286,128 @@ class _RegisterWithEmailScreenState extends State<RegisterWithEmailScreen> {
 }
 
 // -------------------------------------------------------------
-// 2. شاشة التحقق من كود الـ OTP
+// 2. شاشة التحقق من كود الـ OTP (مفعلة بالكامل لتجنب الشاشة البيضاء)
 // -------------------------------------------------------------
-class OtpVerificationScreen extends StatelessWidget {
+class OtpVerificationScreen extends StatefulWidget {
   final String email;
   final String sentOtp;
 
   const OtpVerificationScreen({super.key, required this.email, required this.sentOtp});
 
   @override
+  State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
+}
+
+class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
+  final TextEditingController _otpController = TextEditingController();
+  bool _isLoading = false;
+
+  void _verifyOtp() async {
+    final enteredOtp = _otpController.text.trim();
+    if (enteredOtp.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إدخال رمز التحقق المكون من 6 أرقام')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // التحقق من تطابق الرمز المدخل مع الرمز المرسل
+      if (enteredOtp == widget.sentOtp) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('saved_email', widget.email);
+        await prefs.setString('saved_username', widget.email.split('@')[0]);
+        await prefs.setString('saved_pin', '0000');
+        await prefs.setInt('last_active_time', DateTime.now().millisecondsSinceEpoch);
+
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MainChatHomeScreen(
+                myEmail: widget.email,
+                myUsername: widget.email.split('@')[0],
+                myPin: '0000',
+              ),
+            ),
+            (route) => false,
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('رمز التحقق غير صحيح، حاول مرة أخرى')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('حدث خطأ: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('التحقق من الرمز')),
-      body: Center(
-        child: Text('شاشة التحقق للإيميل: $email'),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text('التحقق من الرمز', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold, fontSize: 18)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Color(0xFF0F5132)),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+        child: Column(
+          children: [
+            const SizedBox(height: 20),
+            const Text(
+              'تم إرسال رمز التحقق إلى بريدك الإلكتروني.\nأدخل الرمز المكون من 6 أرقام أدناه:',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: Colors.black87),
+            ),
+            const SizedBox(height: 30),
+            TextField(
+              controller: _otpController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 8),
+              decoration: const InputDecoration(
+                hintText: '123456',
+                counterText: '',
+                contentPadding: EdgeInsets.symmetric(vertical: 12),
+                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF0F5132), width: 2)),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF137547), width: 2.5)),
+              ),
+            ),
+            const Spacer(),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F5132),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                ),
+                onPressed: _isLoading ? null : _verifyOtp,
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('تأكيد الرمز والدخول', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 15),
+          ],
+        ),
       ),
     );
   }
@@ -325,9 +450,22 @@ class MainChatHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('الرئيسية')),
+      appBar: AppBar(
+        title: Text('مرحباً بك، $myUsername'),
+        backgroundColor: const Color(0xFF0F5132),
+        foregroundColor: Colors.white,
+      ),
       body: Center(
-        child: Text('مرحباً بك يا $myUsername'),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle_outline, size: 80, color: Color(0xFF0F5132)),
+            const SizedBox(height: 20),
+            Text('تم تسجيل الدخول بنجاح!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+            const SizedBox(height: 10),
+            Text('الإيميل: $myEmail', style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+          ],
+        ),
       ),
     );
   }
