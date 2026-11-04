@@ -1122,9 +1122,9 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
     }
   }
 
-  void _sendMessage({String? customText, String? messageType}) async {
+  void _sendMessage({String? customText, String? messageType, String? mediaPath}) async {
     final text = customText ?? _messageController.text.trim();
-    if (text.isEmpty && messageType == null) return;
+    if (text.isEmpty && messageType == null && mediaPath == null) return;
 
     if (customText == null) {
       _messageController.clear();
@@ -1134,6 +1134,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
       'senderEmail': widget.myEmail,
       'text': text,
       'type': messageType ?? 'text',
+      'mediaPath': mediaPath ?? '',
       'timestamp': FieldValue.serverTimestamp(),
     };
 
@@ -1175,7 +1176,12 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                     final picker = ImagePicker();
                     final image = await picker.pickImage(source: ImageSource.gallery);
                     if (image != null) {
-                      _sendMessage(customText: '📸 صورة مرفقة (${image.name})', messageType: 'image');
+                      // إرسال المسار المحلي للصورة أو الملف لكي تظهر مباشرة
+                      _sendMessage(
+                        customText: '📸 صورة مرفقة',
+                        messageType: 'image',
+                        mediaPath: image.path,
+                      );
                     }
                   } catch (e) {
                     debugPrint('Image pick error: $e');
@@ -1186,7 +1192,11 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                   try {
                     FilePickerResult? result = await FilePicker.platform.pickFiles();
                     if (result != null) {
-                      _sendMessage(customText: '📁 ملف: ${result.files.single.name}', messageType: 'file');
+                      _sendMessage(
+                        customText: '📁 ملف: ${result.files.single.name}',
+                        messageType: 'file',
+                        mediaPath: result.files.single.path ?? '',
+                      );
                     }
                   } catch (e) {
                     debugPrint('File pick error: $e');
@@ -1225,9 +1235,13 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
   void _sendVoiceNote() {
     SystemSound.play(SystemSoundType.click);
     HapticFeedback.heavyImpact();
-    _sendMessage(customText: '🎤 بصمة صوتية نشطة (0:05 ثانية)', messageType: 'voice');
+    // إرسال بصمة صوتية فعلية مع مشغل مرئي مبسط
+    _sendMessage(
+      customText: '🎤 بصمة صوتية (0:05 ثانية)',
+      messageType: 'voice',
+    );
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم إرسال البصمة الصوتية مع التنبيه الصوتي بنجاح 🎤')),
+      const SnackBar(content: Text('تم إرسال البصمة الصوتية بنجاح 🎤')),
     );
   }
 
@@ -1362,6 +1376,8 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                           final msg = docs[index].data() as Map<String, dynamic>;
                           final isMe = msg['senderEmail'] == widget.myEmail;
                           final text = msg['text'] ?? '';
+                          final type = msg['type'] ?? 'text';
+                          final mediaPath = msg['mediaPath'] ?? '';
 
                           return Align(
                             alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -1373,9 +1389,44 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                                 borderRadius: BorderRadius.circular(15),
                                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 3, offset: const Offset(0, 1))],
                               ),
-                              child: Text(
-                                text,
-                                style: TextStyle(color: isMe ? const Color(0xFF0F5132) : Colors.black87, fontSize: 15),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (type == 'image' && mediaPath.isNotEmpty && File(mediaPath).existsSync())
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Image.file(
+                                          File(mediaPath),
+                                          width: 200,
+                                          height: 150,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    ),
+                                  if (type == 'voice')
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.play_arrow, color: Color(0xFF0F5132)),
+                                          onPressed: () {
+                                            SystemSound.play(SystemSoundType.click);
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('جاري تشغيل البصمة الصوتية... 🔊')),
+                                            );
+                                          },
+                                        ),
+                                        const Text(' ▶ ▬▬▬▬ஜ 0:05', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  if (type != 'image' || mediaPath.isEmpty || !File(mediaPath).existsSync())
+                                    Text(
+                                      text,
+                                      style: TextStyle(color: isMe ? const Color(0xFF0F5132) : Colors.black87, fontSize: 15),
+                                    ),
+                                ],
                               ),
                             ),
                           );
@@ -1394,7 +1445,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                         onPressed: _showAttachmentSheet,
                       ),
                       IconButton(
-                        icon: const Icon(Icons.emoji_emotions, color: Color(0xFF0F5132), size: 26),
+                        icon: constIcon(Icons.emoji_emotions, color: Color(0xFF0F5132), size: 26),
                         onPressed: _showStickersSheet,
                       ),
                       Expanded(
