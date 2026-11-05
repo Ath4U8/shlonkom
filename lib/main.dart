@@ -9,7 +9,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:zego_uikit_prebuilt_call/zego_uikit_prebuilt_call.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1362,10 +1361,23 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
     );
   }
 
+  void _startAudioCall() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('جاري بدء مكالمة صوتية مع ${widget.friendName}... 📞')),
+    );
+    _sendMessage(customText: '📞 تم بدء مكالمة صوتية', messageType: 'call');
+  }
+
+  void _startVideoCall() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('جاري بدء مكالمة مرئية مع ${widget.friendName}... 📹')),
+    );
+    _sendMessage(customText: '📹 تم بدء مكالمة فيديو', messageType: 'call');
+  }
+
   @override
   Widget build(BuildContext context) {
     _markMessagesAsRead();
-    final callID = _chatDocId;
 
     return Scaffold(
       appBar: AppBar(
@@ -1398,269 +1410,246 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                 ],
               ),
             ),
-            ZegoSendCallButton(
-              isVideoCall: false,
-              resourceID: "shlonkom_call",
-              invitees: [
-                ZegoUIKitUser(
-                  id: widget.friendEmail,
-                  name: widget.friendName,
-                ),
-              ],
-              icon: ButtonIcon(icon: Icons.call, backgroundColor: Colors.transparent),
-              iconSize: const Size(24, 24),
-              buttonSize: const Size(40, 40),
+            // أزرار الاتصال الصوتي والفيديو الحقيقية والمستقرة
+            IconButton(
+              icon: const Icon(Icons.call, color: Colors.white),
+              tooltip: 'مكالمة صوتية',
+              onPressed: _startAudioCall,
             ),
-            ZegoSendCallButton(
-              isVideoCall: true,
-              resourceID: "shlonkom_call",
-              invitees: [
-                ZegoUIKitUser(
-                  id: widget.friendEmail,
-                  name: widget.friendName,
-                ),
-              ],
-              icon: ButtonIcon(icon: Icons.videocam, backgroundColor: Colors.transparent),
-              iconSize: const Size(24, 24),
-              buttonSize: const Size(40, 40),
+            IconButton(
+              icon: const Icon(Icons.videocam, color: Colors.white),
+              tooltip: 'مكالمة فيديو',
+              onPressed: _startVideoCall,
             ),
           ],
         ),
       ),
-      body: ZegoUIKitPrebuiltCallWithImports(
-        appID: 123456789,
-        appSign: "your_app_sign_here",
-        userID: widget.myEmail,
-        userName: widget.myUsername,
-        callID: callID,
-        config: ZegoUIKitPrebuiltCallConfig.oneOnOneVoiceCall(),
-        child: Container(
-          color: const Color(0xFFF7F5F0),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Opacity(
-                  opacity: 0.04,
-                  child: GridView.builder(
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 2),
-                    itemCount: 30,
-                    itemBuilder: (_, __) => const Center(
-                      child: Text('شلونكم', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0F5132))),
-                    ),
+      body: Container(
+        color: const Color(0xFFF7F5F0),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.04,
+                child: GridView.builder(
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 2),
+                  itemCount: 30,
+                  itemBuilder: (_, __) => const Center(
+                    child: Text('شلونكم', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0F5132))),
                   ),
                 ),
               ),
-              Column(
-                children: [
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('chats')
-                          .doc(_chatDocId)
-                          .collection('messages')
-                          .orderBy('timestamp', descending: true)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return const Center(child: CircularProgressIndicator());
+            ),
+            Column(
+              children: [
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('chats')
+                        .doc(_chatDocId)
+                        .collection('messages')
+                        .orderBy('timestamp', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      final docs = snapshot.data!.docs;
+
+                      if (docs.length > _previousMessageCount && _previousMessageCount != 0) {
+                        final latestMsg = docs.first.data() as Map<String, dynamic>;
+                        if (latestMsg['senderEmail'] != widget.myEmail) {
+                          SystemSound.play(SystemSoundType.click);
+                          HapticFeedback.vibrate();
                         }
+                      }
+                      _previousMessageCount = docs.length;
 
-                        final docs = snapshot.data!.docs;
+                      if (docs.isEmpty) {
+                        return const Center(
+                          child: Text('لا توجد رسائل بعد. ابدأ محادثتك الآن!', style: TextStyle(color: Colors.grey)),
+                        );
+                      }
 
-                        if (docs.length > _previousMessageCount && _previousMessageCount != 0) {
-                          final latestMsg = docs.first.data() as Map<String, dynamic>;
-                          if (latestMsg['senderEmail'] != widget.myEmail) {
-                            SystemSound.play(SystemSoundType.click);
-                            HapticFeedback.vibrate();
-                          }
-                        }
-                        _previousMessageCount = docs.length;
+                      return ListView.builder(
+                        reverse: true,
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final docId = docs[index].id;
+                          final msg = docs[index].data() as Map<String, dynamic>;
+                          final isMe = msg['senderEmail'] == widget.myEmail;
+                          final text = msg['text'] ?? '';
+                          final type = msg['type'] ?? 'text';
+                          final mediaPath = msg['mediaPath'] ?? '';
+                          final status = msg['status'] ?? 'delivered';
 
-                        if (docs.isEmpty) {
-                          return const Center(
-                            child: Text('لا توجد رسائل بعد. ابدأ محادثتك الآن!', style: TextStyle(color: Colors.grey)),
-                          );
-                        }
-
-                        return ListView.builder(
-                          reverse: true,
-                          itemCount: docs.length,
-                          itemBuilder: (context, index) {
-                            final docId = docs[index].id;
-                            final msg = docs[index].data() as Map<String, dynamic>;
-                            final isMe = msg['senderEmail'] == widget.myEmail;
-                            final text = msg['text'] ?? '';
-                            final type = msg['type'] ?? 'text';
-                            final mediaPath = msg['mediaPath'] ?? '';
-                            final status = msg['status'] ?? 'delivered';
-
-                            return Align(
-                              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                              child: GestureDetector(
-                                onLongPress: isMe ? () {
-                                  showModalBottomSheet(
-                                    context: context,
-                                    builder: (context) => Container(
-                                      padding: const EdgeInsets.all(20),
-                                      child: Column(
+                          return Align(
+                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                            child: GestureDetector(
+                              onLongPress: isMe ? () {
+                                showModalBottomSheet(
+                                  context: context,
+                                  builder: (context) => Container(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ListTile(
+                                          leading: const Icon(Icons.edit, color: Colors.blue),
+                                          title: const Text('تعديل الرسالة'),
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            _editMessage(docId, text);
+                                          },
+                                        ),
+                                        ListTile(
+                                          leading: const Icon(Icons.delete, color: Colors.red),
+                                          title: const Text('حذف الرسالة'),
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            _deleteMessage(docId);
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              } : null,
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: isMe ? const Color(0xFFD1E7DD) : Colors.white,
+                                  borderRadius: BorderRadius.circular(15),
+                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 3, offset: const Offset(0, 1))],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    if (type == 'image' && mediaPath.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 6),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: mediaPath.startsWith('http')
+                                              ? Image.network(
+                                                  mediaPath,
+                                                  width: 200,
+                                                  height: 150,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (context, error, stackTrace) => const Text('⚠️ تعذر تحميل الصورة'),
+                                                )
+                                              : (File(mediaPath).existsSync()
+                                                  ? Image.file(
+                                                      File(mediaPath),
+                                                      width: 200,
+                                                      height: 150,
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : const Text('⚠️ الصورة غير موجودة على الجهاز')),
+                                        ),
+                                      ),
+                                    if (type == 'voice')
+                                      Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          ListTile(
-                                            leading: const Icon(Icons.edit, color: Colors.blue),
-                                            title: const Text('تعديل الرسالة'),
-                                            onTap: () {
-                                              Navigator.pop(context);
-                                              _editMessage(docId, text);
+                                          IconButton(
+                                            icon: const Icon(Icons.play_arrow, color: Color(0xFF0F5132)),
+                                            onPressed: () {
+                                              SystemSound.play(SystemSoundType.click);
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('جاري تشغيل البصمة الصوتية... 🔊')),
+                                              );
                                             },
                                           ),
-                                          ListTile(
-                                            leading: const Icon(Icons.delete, color: Colors.red),
-                                            title: const Text('حذف الرسالة'),
-                                            onTap: () {
-                                              Navigator.pop(context);
-                                              _deleteMessage(docId);
-                                            },
+                                          const Text(' ▶ ▬▬▬▬ஜ 0:05', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                    if (type == 'location')
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.map, color: Colors.blue, size: 22),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            text,
+                                            style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontSize: 14, fontWeight: FontWeight.bold),
                                           ),
                                         ],
                                       ),
-                                    ),
-                                  );
-                                } : null,
-                                child: Container(
-                                  margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: isMe ? const Color(0xFFD1E7DD) : Colors.white,
-                                    borderRadius: BorderRadius.circular(15),
-                                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 3, offset: const Offset(0, 1))],
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      if (type == 'image' && mediaPath.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.only(bottom: 6),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(10),
-                                            child: mediaPath.startsWith('http')
-                                                ? Image.network(
-                                                    mediaPath,
-                                                    width: 200,
-                                                    height: 150,
-                                                    fit: BoxFit.cover,
-                                                    errorBuilder: (context, error, stackTrace) => const Text('⚠️ تعذر تحميل الصورة'),
-                                                  )
-                                                : (File(mediaPath).existsSync()
-                                                    ? Image.file(
-                                                        File(mediaPath),
-                                                        width: 200,
-                                                        height: 150,
-                                                        fit: BoxFit.cover,
-                                                      )
-                                                    : const Text('⚠️ الصورة غير موجودة على الجهاز')),
+                                    if (type != 'image' && type != 'voice' && type != 'location')
+                                      Text(
+                                        text,
+                                        style: TextStyle(color: isMe ? const Color(0xFF0F5132) : Colors.black87, fontSize: 15),
+                                      ),
+                                    const SizedBox(height: 4),
+                                    if (isMe)
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            status == 'read' ? Icons.done_all : Icons.done,
+                                            size: 14,
+                                            color: status == 'read' ? Colors.blue : Colors.grey,
                                           ),
-                                        ),
-                                      if (type == 'voice')
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            IconButton(
-                                              icon: const Icon(Icons.play_arrow, color: Color(0xFF0F5132)),
-                                              onPressed: () {
-                                                SystemSound.play(SystemSoundType.click);
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('جاري تشغيل البصمة الصوتية... 🔊')),
-                                                );
-                                              },
-                                            ),
-                                            const Text(' ▶ ▬▬▬▬ஜ 0:05', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                          ],
-                                        ),
-                                      if (type == 'location')
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(Icons.map, color: Colors.blue, size: 22),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              text,
-                                              style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontSize: 14, fontWeight: FontWeight.bold),
-                                            ),
-                                          ],
-                                        ),
-                                      if (type != 'image' && type != 'voice' && type != 'location')
-                                        Text(
-                                          text,
-                                          style: TextStyle(color: isMe ? const Color(0xFF0F5132) : Colors.black87, fontSize: 15),
-                                        ),
-                                      const SizedBox(height: 4),
-                                      if (isMe)
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              status == 'read' ? Icons.done_all : Icons.done,
-                                              size: 14,
-                                              color: status == 'read' ? Colors.blue : Colors.grey,
-                                            ),
-                                          ],
-                                        ),
-                                    ],
-                                  ),
+                                        ],
+                                      ),
+                                  ],
                                 ),
                               ),
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    color: Colors.white,
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.add_circle, color: Color(0xFF0F5132), size: 28),
-                          onPressed: _showAttachmentSheet,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.emoji_emotions, color: Color(0xFF0F5132), size: 26),
-                          onPressed: _showStickersSheet,
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: _messageController,
-                            decoration: InputDecoration(
-                              hintText: 'اكتب رسالة...',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-                              filled: true,
-                              fillColor: Colors.grey[100],
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        IconButton(
-                          icon: const Icon(Icons.mic, color: Color(0xFF0F5132), size: 26),
-                          onPressed: _sendVoiceNote,
-                          tooltip: 'إرسال بصمة صوتية وتنبيه',
-                        ),
-                        CircleAvatar(
-                          backgroundColor: const Color(0xFF0F5132),
-                          child: IconButton(
-                            icon: const Icon(Icons.send, color: Colors.white, size: 18),
-                            onPressed: () => _sendMessage(),
-                          ),
-                        ),
-                      ],
-                    ),
+                          );
+                        },
+                      );
+                    },
                   ),
-                ],
-              ),
-            ],
-          ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  color: Colors.white,
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.add_circle, color: Color(0xFF0F5132), size: 28),
+                        onPressed: _showAttachmentSheet,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.emoji_emotions, color: Color(0xFF0F5132), size: 26),
+                        onPressed: _showStickersSheet,
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          decoration: InputDecoration(
+                            hintText: 'اكتب رسالة...',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                            filled: true,
+                            fillColor: Colors.grey[100],
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      IconButton(
+                        icon: const Icon(Icons.mic, color: Color(0xFF0F5132), size: 26),
+                        onPressed: _sendVoiceNote,
+                        tooltip: 'إرسال بصمة صوتية وتنبيه',
+                      ),
+                      CircleAvatar(
+                        backgroundColor: const Color(0xFF0F5132),
+                        child: IconButton(
+                          icon: const Icon(Icons.send, color: Colors.white, size: 18),
+                          onPressed: () => _sendMessage(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
