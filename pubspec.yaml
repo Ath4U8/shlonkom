@@ -1,3 +1,4 @@
+cat > pubspec.yaml << 'EOP'
 name: shlonkom
 description: أول تطبيق مراسلة عراقي - شلونكم
 publish_to: 'none'
@@ -10,7 +11,6 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
-  # هذني ضرورية للتطبيق مالك الحالي
   firebase_core: ^2.24.0
   firebase_auth: ^4.15.0
   cloud_firestore: ^4.15.0
@@ -26,3 +26,4 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+EOP
