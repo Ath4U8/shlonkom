@@ -542,7 +542,7 @@ class IncomingCallListener extends StatelessWidget {
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$callerName يتصل بك...', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)), const Text('مكالمة صوتية مجانية', style: TextStyle(color: Colors.white70, fontSize: 12))])),
                 IconButton(icon: const Icon(Icons.call_end, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.red), onPressed: () async { await FirebaseFirestore.instance.collection('calls').doc(call.id).update({'status': 'ended'}); }),
                 const SizedBox(width: 10),
-                IconButton(icon: const Icon(Icons.call, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.green), onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (_) => VoiceCallScreen(myEmail: myEmail, friendEmail: caller, friendName: callerName, chatDocId: chatDocId, isIncoming: true, incomingCallId: call.id))); }),
+                IconButton(icon: const Icon(Icons.call, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.green), onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (_) => VoiceCallScreen(myEmail: myEmail, myUsername: myEmail.split('@')[0], friendEmail: caller, friendName: callerName, chatDocId: chatDocId, isIncoming: true, incomingCallId: call.id))); }),
               ],
             ),
           ),
@@ -691,7 +691,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
           Text(_isFriendTyping ? 'جاري الكتابة...' : _friendStatus, style: TextStyle(fontSize: 10, color: _isFriendTyping ? Colors.yellowAccent : Colors.white70, fontWeight: _isFriendTyping ? FontWeight.bold : FontWeight.normal))
         ]))
       ]), actions: [
-        IconButton(icon: const Icon(Icons.call, color: Colors.white), tooltip: 'اتصال صوتي مجاني', onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (_) => VoiceCallScreen(myEmail: widget.myEmail, friendEmail: widget.friendEmail, friendName: widget.friendName, chatDocId: _chatDocId))); }),
+        IconButton(icon: const Icon(Icons.call, color: Colors.white), tooltip: 'اتصال صوتي مجاني', onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (_) => VoiceCallScreen(myEmail: widget.myEmail, myUsername: widget.myUsername, friendEmail: widget.friendEmail, friendName: widget.friendName, chatDocId: _chatDocId))); }),
         IconButton(icon: const Icon(Icons.arrow_forward, size: 22), tooltip: 'رجوع', onPressed: () => Navigator.pop(context))
       ]),
       body: Container(
@@ -735,10 +735,10 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
 
 // Voice Call Screen - REAL FREE CALL
 class VoiceCallScreen extends StatefulWidget {
-  final String myEmail, friendEmail, friendName, chatDocId;
+  final String myEmail, myUsername, friendEmail, friendName, chatDocId;
   final bool isIncoming;
   final String? incomingCallId;
-  const VoiceCallScreen({super.key, required this.myEmail, required this.friendEmail, required this.friendName, required this.chatDocId, this.isIncoming = false, this.incomingCallId});
+  const VoiceCallScreen({super.key, required this.myEmail, required this.myUsername, required this.friendEmail, required this.friendName, required this.chatDocId, this.isIncoming = false, this.incomingCallId});
   @override
   State<VoiceCallScreen> createState() => _VoiceCallScreenState();
 }
