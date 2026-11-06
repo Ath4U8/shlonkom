@@ -1,7 +1,7 @@
 name: shlonkom
 description: تطبيق شلونكم - دردشة عراقية
 publish_to: 'none'
-version: 1.0.0+16
+version: 1.0.0+18
 environment:
   sdk: '>=3.0.0 <4.0.0'
 dependencies:
@@ -18,10 +18,6 @@ dependencies:
   flutter_launcher_icons: ^0.14.3
   cupertino_icons: ^1.0.2
   audioplayers: ^6.1.0
-  record: ^5.1.0
-  just_audio: ^0.9.40
-  flutter_sound: ^9.28.0
-  vibration: ^2.0.0
 dev_dependencies:
   flutter_lints: ^3.0.0
 flutter:
@@ -29,9 +25,8 @@ flutter:
   assets:
     - assets/images/app_icon.png
     - assets/images/login_bg.png
-    - assets/sounds/notification.mp3
-flutter_icons:
+flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false
   image_path: "assets/images/app_icon.png"
   min_sdk_android: 21
