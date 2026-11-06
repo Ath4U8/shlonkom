@@ -1,32 +1,21 @@
 name: shlonkom
-description: تطبيق شلونكم - دردشة عراقية
+description: Shlonkom Chat App
 publish_to: 'none'
-version: 1.0.0+18
+version: 1.0.0+1
 environment:
   sdk: '>=3.0.0 <4.0.0'
 dependencies:
   flutter:
     sdk: flutter
-  firebase_core: ^2.32.0
-  firebase_auth: ^4.20.0
-  cloud_firestore: ^4.17.3
+  firebase_core: ^2.24.2
+  cloud_firestore: ^4.13.6
   image_picker: ^1.0.7
   shared_preferences: ^2.2.2
-  uuid: ^4.2.1
-  flutter_webrtc: ^0.9.48
-  permission_handler: ^11.3.0
-  flutter_launcher_icons: ^0.14.3
-  cupertino_icons: ^1.0.2
-  audioplayers: ^6.1.0
 dev_dependencies:
+  flutter_test:
+    sdk: flutter
   flutter_lints: ^3.0.0
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/app_icon.png
-    - assets/images/login_bg.png
-flutter_launcher_icons:
-  android: true
-  ios: false
-  image_path: "assets/images/app_icon.png"
-  min_sdk_android: 21
+    - assets/images/
