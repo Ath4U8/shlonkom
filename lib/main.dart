@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+// Storage removed - using base64 in Firestore
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -106,11 +106,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     }
   }
   Future<void> _pickImage() async { final picker = ImagePicker(); final picked = await picker.pickImage(source: ImageSource.gallery); if (picked != null) { setState(() { _selectedImage = File(picked.path); }); } }
-  void _saveProfileAndProceed() async { final username = _usernameController.text.trim(); if (username.isEmpty || _permanentPersonalPin == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال اسم المستخدم'))); return; } setState(() => _isLoading = true); try { try { await FirebaseFirestore.instance.collection('users').doc(widget.email).set({'email': widget.email, 'username': username, 'personalPin': _permanentPersonalPin, 'createdAt': FieldValue.serverTimestamp(), 'isOnline': true, 'lastSeen': FieldValue.serverTimestamp()}, SetOptions(merge: true)); } catch (e) { debugPrint('Save error but continue: $e'); } final prefs = await SharedPreferences.getInstance(); await prefs.setString('saved_email', widget.email); await prefs.setString('saved_username', username); await prefs.setString('saved_personal_pin', _permanentPersonalPin!); await prefs.setInt('last_active_time', DateTime.now().millisecondsSinceEpoch); if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => MainChatHomeScreen(myEmail: widget.email, myUsername: username, myPersonalPin: _permanentPersonalPin!)), (route) => false); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء حفظ البيانات: $e'))); } finally { if (mounted) setState(() => _isLoading = false); } }
+  void _saveProfileAndProceed() async { final username = _usernameController.text.trim(); if (username.isEmpty || _permanentPersonalPin == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى إدخال اسم المستخدم'))); return; } try { final user = FirebaseAuth.instance.currentUser; if (user != null) { await user.reload(); final fresh = FirebaseAuth.instance.currentUser; if (fresh == null || !fresh.emailVerified) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يجب تفعيل بريدك أولاً! افتح ايميلك واضغط رابط التفعيل.'), backgroundColor: Colors.red)); return; } } } catch (_) {} setState(() => _isLoading = true); try { try { await FirebaseFirestore.instance.collection('users').doc(widget.email).set({'email': widget.email, 'username': username, 'personalPin': _permanentPersonalPin, 'photoBase64': _base64Image, 'createdAt': FieldValue.serverTimestamp(), 'isOnline': true, 'lastSeen': FieldValue.serverTimestamp()}, SetOptions(merge: true)); } catch (e) { debugPrint('Save error but continue: $e'); } final prefs = await SharedPreferences.getInstance(); await prefs.setString('saved_email', widget.email); await prefs.setString('saved_username', username); await prefs.setString('saved_personal_pin', _permanentPersonalPin!); await prefs.setInt('last_active_time', DateTime.now().millisecondsSinceEpoch); if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => MainChatHomeScreen(myEmail: widget.email, myUsername: username, myPersonalPin: _permanentPersonalPin!)), (route) => false); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء حفظ البيانات: $e'))); } finally { if (mounted) setState(() => _isLoading = false); } }
   @override
   Widget build(BuildContext context) {
     return Scaffold(backgroundColor: Colors.white, appBar: AppBar(automaticallyImplyLeading: false, title: const Text('إعداد الملف الشخصي', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold, fontSize: 18)), backgroundColor: Colors.white, elevation: 0, centerTitle: true),
-      body: SingleChildScrollView(padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0), child: Column(children: [GestureDetector(onTap: _pickImage, child: Stack(alignment: Alignment.bottomRight, children: [CircleAvatar(radius: 60, backgroundColor: const Color(0xFF0F5132).withOpacity(0.1), backgroundImage: _selectedImage != null ? FileImage(_selectedImage!) : null, child: _selectedImage == null ? const Icon(Icons.person, size: 80, color: Color(0xFF0F5132)) : null), const CircleAvatar(radius: 20, backgroundColor: Color(0xFF0F5132), child: Icon(Icons.camera_alt, size: 20, color: Colors.white))])), const SizedBox(height: 25), TextField(controller: _usernameController, decoration: const InputDecoration(labelText: 'اسم المستخدم', hintText: 'مثال: Ath4U', prefixIcon: Icon(Icons.alternate_email, color: Color(0xFF0F5132)), border: OutlineInputBorder())), const SizedBox(height: 20), Container(padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: const Color(0xFF0F5132).withOpacity(0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF0F5132).withOpacity(0.3))), child: Column(children: [const Text('رقمك الشخصي الثابت (بديل رقم الهاتف):', style: TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.bold)), const SizedBox(height: 5), Text(_permanentPersonalPin ?? 'جاري التوليد...', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF0F5132), letterSpacing: 4))])), const SizedBox(height: 30), SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))), onPressed: _isLoading ? null : _saveProfileAndProceed, child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('حفظ والدخول والتفعيل', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)))), const SizedBox(height: 15), const Text('Designed by: Atheer Sami', style: TextStyle(color: Colors.black45, fontSize: 13, fontWeight: FontWeight.w600))]))); 
+      body: SingleChildScrollView(padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0), child: Column(children: [GestureDetector(onTap: _pickImage, child: Stack(alignment: Alignment.bottomRight, children: [CircleAvatar(radius: 60, backgroundColor: const Color(0xFF0F5132).withOpacity(0.1), backgroundImage: _selectedImage != null ? FileImage(_selectedImage!) : null, child: _selectedImage == null ? const Icon(Icons.person, size: 80, color: Color(0xFF0F5132)) : null), const CircleAvatar(radius: 20, backgroundColor: Color(0xFF0F5132), child: Icon(Icons.camera_alt, size: 20, color: Colors.white))])), const SizedBox(height: 25), TextField(controller: _usernameController, textAlign: TextAlign.center, decoration: const InputDecoration(labelText: 'اسم المستخدم', hintText: 'مثال: Ath4U', prefixIcon: Icon(Icons.alternate_email, color: Color(0xFF0F5132)), border: OutlineInputBorder())), const SizedBox(height: 20), Container(padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: const Color(0xFF0F5132).withOpacity(0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF0F5132).withOpacity(0.3))), child: Column(children: [const Text('رقمك الشخصي الثابت (بديل رقم الهاتف):', style: TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.bold)), const SizedBox(height: 5), Text(_permanentPersonalPin ?? 'جاري التوليد...', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF0F5132), letterSpacing: 4))])), const SizedBox(height: 30), SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))), onPressed: _isLoading ? null : _saveProfileAndProceed, child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('حفظ والدخول والتفعيل', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)))), const SizedBox(height: 15), const Text('Designed by: Atheer Sami', style: TextStyle(color: Colors.black45, fontSize: 13, fontWeight: FontWeight.w600))]))); 
   }
 }
 
@@ -184,33 +184,277 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
   }
 }
 
-class VoiceCallScreen extends StatefulWidget { final String myEmail, friendEmail, friendName, chatDocId; const VoiceCallScreen({super.key, required this.myEmail, required this.friendEmail, required this.friendName, required this.chatDocId}); @override State<VoiceCallScreen> createState() => _VoiceCallScreenState(); }
+
+class VoiceCallScreen extends StatefulWidget {
+  final String myEmail, friendEmail, friendName, chatDocId;
+  final bool isIncoming;
+  final String? incomingCallId;
+  const VoiceCallScreen({super.key, required this.myEmail, required this.friendEmail, required this.friendName, required this.chatDocId, this.isIncoming = false, this.incomingCallId});
+
+  @override State<VoiceCallScreen> createState() => _VoiceCallScreenState();
+}
+
 class _VoiceCallScreenState extends State<VoiceCallScreen> {
-  final _localRenderer = RTCVideoRenderer(); final _remoteRenderer = RTCVideoRenderer(); RTCPeerConnection? _pc; bool _inCall = false; bool _isCaller = true;
+  RTCPeerConnection? _peerConnection;
+  MediaStream? _localStream;
+  RTCVideoRenderer _localRenderer = RTCVideoRenderer();
+  RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
+  bool _isConnected = false;
+  bool _isMuted = false;
+  bool _isSpeakerOn = false;
+  String _status = 'جاري الاتصال...';
+  String? _callDocId;
+
+  final Map<String, dynamic> _config = {
+    'iceServers': [
+      {'urls': 'stun:stun.l.google.com:19302'},
+      {'urls': 'stun:stun1.l.google.com:19302'},
+    ]
+  };
+
   @override
-  void initState() { super.initState(); _init(); }
-  Future<void> _init() async {
-    await Permission.microphone.request(); await _localRenderer.initialize(); await _remoteRenderer.initialize();
-    _pc = await createPeerConnection({'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}, {'urls': 'stun:stun1.l.google.com:19302'}]});
-    _pc!.onTrack = (e) { if (mounted) setState(() { _remoteRenderer.srcObject = e.streams[0]; _inCall = true; }); };
-    _pc!.onIceCandidate = (c) { if (c.candidate != null) FirebaseFirestore.instance.collection('calls').doc(widget.chatDocId).collection('candidates').add(c.toMap()); };
-    try {
-      var stream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false}); _localRenderer.srcObject = stream; for (var t in stream.getTracks()) { await _pc!.addTrack(t, stream); }
-      var callDoc = FirebaseFirestore.instance.collection('calls').doc(widget.chatDocId); var existing = await callDoc.get();
-      if (!existing.exists || existing.data()?['offer'] == null) {
-        var offer = await _pc!.createOffer(); await _pc!.setLocalDescription(offer); await callDoc.set({'offer': offer.toMap(), 'caller': widget.myEmail, 'callee': widget.friendEmail, 'started': FieldValue.serverTimestamp()});
-        _isCaller = true;
-      } else {
-        _isCaller = false; await _pc!.setRemoteDescription(RTCSessionDescription(existing.data()!['offer']['sdp'], existing.data()!['offer']['type'])); var answer = await _pc!.createAnswer(); await _pc!.setLocalDescription(answer); await callDoc.update({'answer': answer.toMap()});
-      }
-      callDoc.snapshots().listen((s) async { if (s.data()?['answer'] != null && _pc!.getRemoteDescription() == null && _isCaller) { await _pc!.setRemoteDescription(RTCSessionDescription(s.data()!['answer']['sdp'], s.data()!['answer']['type'])); if (mounted) setState(() => _inCall = true); } });
-      callDoc.collection('candidates').snapshots().listen((snap) { for (var change in snap.docChanges) { if (change.type == DocumentChangeType.added) { var data = change.doc.data(); if (data != null) { _pc!.addCandidate(RTCIceCandidate(data['candidate'] as String?, data['sdpMid'] as String?, data['sdpMLineIndex'] as int?)); } } } });
-    } catch (e) { debugPrint('WebRTC error: $e'); }
+  void initState() {
+    super.initState();
+    _initRenderers();
+    if (widget.isIncoming) {
+      _callDocId = widget.incomingCallId;
+      _status = 'مكالمة واردة من ${widget.friendName}';
+      _answerCall();
+    } else {
+      _startCall();
+    }
   }
+
+  Future<void> _initRenderers() async {
+    await _localRenderer.initialize();
+    await _remoteRenderer.initialize();
+  }
+
+  Future<void> _startCall() async {
+    try {
+      _localStream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false});
+      _localRenderer.srcObject = _localStream;
+      
+      _peerConnection = await createPeerConnection(_config);
+      _localStream!.getTracks().forEach((track) { _peerConnection!.addTrack(track, _localStream!); });
+      
+      _peerConnection!.onIceCandidate = (candidate) {
+        if (_callDocId != null) {
+          FirebaseFirestore.instance.collection('calls').doc(_callDocId).collection('candidates').doc(widget.myEmail).collection('caller').add(candidate.toMap());
+        }
+      };
+      
+      _peerConnection!.onConnectionState = (state) {
+        if (mounted) setState(() { 
+          if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) { _isConnected = true; _status = 'متصل - ${widget.friendName}'; }
+          else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) { _status = 'فشل الاتصال'; }
+        });
+      };
+
+      _peerConnection!.onTrack = (event) {
+        if (event.streams.isNotEmpty) {
+          _remoteRenderer.srcObject = event.streams[0];
+        }
+      };
+
+      // Create call doc
+      final callRef = FirebaseFirestore.instance.collection('calls').doc();
+      _callDocId = callRef.id;
+      await callRef.set({
+        'caller': widget.myEmail,
+        'callee': widget.friendEmail,
+        'callerName': widget.myEmail.split('@')[0],
+        'calleeName': widget.friendName,
+        'status': 'ringing',
+        'timestamp': FieldValue.serverTimestamp(),
+        'chatDocId': widget.chatDocId,
+      });
+
+      final offer = await _peerConnection!.createOffer();
+      await _peerConnection!.setLocalDescription(offer);
+      await callRef.update({'offer': offer.toMap()});
+
+      // Listen for answer
+      callRef.snapshots().listen((doc) async {
+        if (doc.exists && doc.data()?['answer'] != null && mounted) {
+          final answer = RTCSessionDescription(doc.data()!['answer']['sdp'], doc.data()!['answer']['type']);
+          await _peerConnection!.setRemoteDescription(answer);
+        }
+        if (doc.data()?['status'] == 'ended' && mounted) {
+          _endCall();
+        }
+      });
+
+      // Listen for remote candidates
+      FirebaseFirestore.instance.collection('calls').doc(_callDocId).collection('candidates').doc(widget.friendEmail).collection('callee').snapshots().listen((snapshot) {
+        for (var doc in snapshot.docChanges) {
+          if (doc.type == DocumentChangeType.added) {
+            final candidate = RTCIceCandidate(doc.doc.data()['candidate'], doc.doc.data()['sdpMid'], doc.doc.data()['sdpMLineIndex']);
+            _peerConnection!.addCandidate(candidate);
+          }
+        }
+      });
+
+    } catch (e) {
+      if (mounted) setState(() => _status = 'خطأ: $e');
+    }
+  }
+
+  Future<void> _answerCall() async {
+    try {
+      _localStream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false});
+      _localRenderer.srcObject = _localStream;
+      
+      _peerConnection = await createPeerConnection(_config);
+      _localStream!.getTracks().forEach((track) { _peerConnection!.addTrack(track, _localStream!); });
+      
+      _peerConnection!.onIceCandidate = (candidate) {
+        FirebaseFirestore.instance.collection('calls').doc(_callDocId).collection('candidates').doc(widget.myEmail).collection('callee').add(candidate.toMap());
+      };
+
+      _peerConnection!.onConnectionState = (state) {
+        if (mounted) setState(() { 
+          if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) { _isConnected = true; _status = 'متصل - ${widget.friendName}'; }
+        });
+      };
+
+      _peerConnection!.onTrack = (event) {
+        if (event.streams.isNotEmpty) {
+          _remoteRenderer.srcObject = event.streams[0];
+        }
+      };
+
+      final callDoc = await FirebaseFirestore.instance.collection('calls').doc(_callDocId).get();
+      final offerData = callDoc.data()?['offer'];
+      if (offerData != null) {
+        final offer = RTCSessionDescription(offerData['sdp'], offerData['type']);
+        await _peerConnection!.setRemoteDescription(offer);
+        final answer = await _peerConnection!.createAnswer();
+        await _peerConnection!.setLocalDescription(answer);
+        await FirebaseFirestore.instance.collection('calls').doc(_callDocId).update({'answer': answer.toMap(), 'status': 'connected'});
+      }
+
+      // Listen for caller candidates
+      FirebaseFirestore.instance.collection('calls').doc(_callDocId).collection('candidates').doc(widget.friendEmail).collection('caller').snapshots().listen((snapshot) {
+        for (var doc in snapshot.docChanges) {
+          if (doc.type == DocumentChangeType.added) {
+            final candidate = RTCIceCandidate(doc.doc.data()['candidate'], doc.doc.data()['sdpMid'], doc.doc.data()['sdpMLineIndex']);
+            _peerConnection!.addCandidate(candidate);
+          }
+        }
+      });
+
+      // Listen for end
+      FirebaseFirestore.instance.collection('calls').doc(_callDocId).snapshots().listen((doc) {
+        if (doc.data()?['status'] == 'ended' && mounted) {
+          _endCall();
+        }
+      });
+
+    } catch (e) {
+      if (mounted) setState(() => _status = 'خطأ: $e');
+    }
+  }
+
+  void _endCall() async {
+    try {
+      if (_callDocId != null) {
+        await FirebaseFirestore.instance.collection('calls').doc(_callDocId).update({'status': 'ended', 'endedAt': FieldValue.serverTimestamp()});
+      }
+      await _localStream?.dispose();
+      await _peerConnection?.close();
+      await _localRenderer.dispose();
+      await _remoteRenderer.dispose();
+    } catch (_) {}
+    if (mounted) Navigator.pop(context);
+  }
+
+  void _toggleMute() {
+    if (_localStream != null) {
+      final audioTrack = _localStream!.getAudioTracks().first;
+      setState(() { _isMuted = !_isMuted; audioTrack.enabled = !_isMuted; });
+    }
+  }
+
+  void _toggleSpeaker() {
+    setState(() => _isSpeakerOn = !_isSpeakerOn);
+    if (_localStream != null) {
+      Helper.setSpeakerphoneOn(_isSpeakerOn);
+    }
+  }
+
   @override
-  void dispose() { _localRenderer.dispose(); _remoteRenderer.dispose(); _pc?.close(); try { FirebaseFirestore.instance.collection('calls').doc(widget.chatDocId).delete(); } catch (_) {} super.dispose(); }
+  void dispose() {
+    _localStream?.dispose();
+    _peerConnection?.close();
+    _localRenderer.dispose();
+    _remoteRenderer.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(backgroundColor: const Color(0xFF0F5132), body: SafeArea(child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const SizedBox(height: 60), CircleAvatar(radius: 60, backgroundColor: Colors.white, child: Text(widget.friendName[0].toUpperCase(), style: const TextStyle(fontSize: 50, color: Color(0xFF0F5132), fontWeight: FontWeight.bold))), const SizedBox(height: 20), Text(widget.friendName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)), const SizedBox(height: 10), Text(_inCall ? 'متصل الآن - مجاني 100% 🔥' : 'جاري الاتصال بـ ${widget.friendName}...', style: const TextStyle(color: Colors.white70, fontSize: 14)), const Spacer(), Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [FloatingActionButton(backgroundColor: Colors.white24, onPressed: () {}, child: const Icon(Icons.mic, color: Colors.white)), FloatingActionButton.large(backgroundColor: Colors.red, onPressed: () => Navigator.pop(context), child: const Icon(Icons.call_end, size: 35, color: Colors.white)), FloatingActionButton(backgroundColor: Colors.white24, onPressed: () {}, child: const Icon(Icons.volume_up, color: Colors.white))]), const SizedBox(height: 50), const Text('Designed by: Atheer Sami', style: TextStyle(color: Colors.white54, fontSize: 12))]))));
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F5132),
+      body: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 60),
+            CircleAvatar(radius: 60, backgroundColor: Colors.white24, child: Text(widget.friendName[0].toUpperCase(), style: const TextStyle(fontSize: 50, color: Colors.white))),
+            const SizedBox(height: 20),
+            Text(widget.friendName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Text(_status, style: const TextStyle(color: Colors.white70, fontSize: 16)),
+            const Spacer(),
+            if (widget.isIncoming && !_isConnected) Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+              FloatingActionButton.large(backgroundColor: Colors.red, onPressed: _endCall, child: const Icon(Icons.call_end, size: 40)),
+              FloatingActionButton.large(backgroundColor: Colors.green, onPressed: () { setState(() { _isConnected = true; _status = 'جاري الاتصال...'; }); }, child: const Icon(Icons.call, size: 40)),
+            ]),
+            if (!widget.isIncoming || _isConnected) Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+              IconButton.filledTonal(onPressed: _toggleMute, icon: Icon(_isMuted ? Icons.mic_off : Icons.mic), style: IconButton.styleFrom(backgroundColor: _isMuted ? Colors.red : Colors.white24, foregroundColor: Colors.white, iconSize: 28, padding: const EdgeInsets.all(15))),
+              FloatingActionButton.large(backgroundColor: Colors.red, onPressed: _endCall, child: const Icon(Icons.call_end, size: 40)),
+              IconButton.filledTonal(onPressed: _toggleSpeaker, icon: Icon(_isSpeakerOn ? Icons.volume_up : Icons.volume_down), style: IconButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white, iconSize: 28, padding: const EdgeInsets.all(15))),
+            ]),
+            const SizedBox(height: 50),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Incoming call listener widget
+class IncomingCallListener extends StatelessWidget {
+  final String myEmail;
+  const IncomingCallListener({super.key, required this.myEmail});
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('calls').where('callee', isEqualTo: myEmail).where('status', isEqualTo: 'ringing').orderBy('timestamp', descending: true).limit(1).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
+        final call = snapshot.data!.docs.first;
+        final data = call.data() as Map<String, dynamic>;
+        final caller = data['caller'] as String;
+        final callerName = data['calleeName'] ?? caller.split('@')[0];
+        final chatDocId = data['chatDocId'] ?? '';
+        return Container(
+          color: const Color(0xFF0F5132),
+          padding: const EdgeInsets.all(15),
+          child: SafeArea(
+            child: Row(
+              children: [
+                const Icon(Icons.call, color: Colors.white, size: 30),
+                const SizedBox(width: 15),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$callerName يتصل بك...', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)), const Text('مكالمة صوتية مجانية', style: TextStyle(color: Colors.white70, fontSize: 12))])),
+                IconButton(icon: const Icon(Icons.call_end, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.red), onPressed: () async { await FirebaseFirestore.instance.collection('calls').doc(call.id).update({'status': 'ended'}); }),
+                const SizedBox(width: 10),
+                IconButton(icon: const Icon(Icons.call, color: Colors.white), style: IconButton.styleFrom(backgroundColor: Colors.green), onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (_) => VoiceCallScreen(myEmail: myEmail, friendEmail: caller, friendName: callerName, chatDocId: chatDocId, isIncoming: true, incomingCallId: call.id))); }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }
