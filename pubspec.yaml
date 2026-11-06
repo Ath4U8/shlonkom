@@ -1,33 +1,28 @@
 name: shlonkom
-description: أول تطبيق مراسلة عراقي - شلونكم Designed by Atheer Sami
+description: أول تطبيق مراسلة عراقي - شلونكم
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
-sdk: '>=3.2.0 <4.0.0'
+  sdk: '>=3.2.0 <4.0.0'
 
 dependencies:
-flutter:
-sdk: flutter
-cupertino_icons: ^1.0.6
-firebase_core: ^2.24.2
-firebase_auth: ^4.15.3
-firebase_storage: ^11.6.0
-cloud_firestore: ^4.15.5
-image_picker: ^1.0.7
-shared_preferences: ^2.2.2
-uuid: ^4.3.3
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  # هذني ضرورية للتطبيق مالك الحالي
+  firebase_core: ^2.24.0
+  firebase_auth: ^4.15.0
+  cloud_firestore: ^4.15.0
+  firebase_storage: ^11.5.0
+  image_picker: ^1.0.7
+  shared_preferences: ^2.2.2
+  uuid: ^4.3.3
 
 dev_dependencies:
-flutter_test:
-sdk: flutter
-flutter_lints: ^3.0.1
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
 
 flutter:
-uses-material-design: true
-assets:
-- assets/images/
-fonts:
-- family: Cairo
-fonts:
-- asset: assets/fonts/Cairo-Regular.ttf
+  uses-material-design: true
