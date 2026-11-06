@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -12,11 +11,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Firebase.initializeApp();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent, systemNavigationBarColor: Colors.transparent));
   runApp(const ShlonkomApp());
@@ -170,7 +168,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
         _isCaller = false; await _pc!.setRemoteDescription(RTCSessionDescription(existing.data()!['offer']['sdp'], existing.data()!['offer']['type'])); var answer = await _pc!.createAnswer(); await _pc!.setLocalDescription(answer); await callDoc.update({'answer': answer.toMap()});
       }
       callDoc.snapshots().listen((s) async { if (s.data()?['answer'] != null && _pc!.getRemoteDescription() == null && _isCaller) { await _pc!.setRemoteDescription(RTCSessionDescription(s.data()!['answer']['sdp'], s.data()!['answer']['type'])); if (mounted) setState(() => _inCall = true); } });
-      callDoc.collection('candidates').snapshots().listen((snap) { for (var change in snap.docChanges) { if (change.type == DocumentChangeType.added) { var data = change.doc.data(); _pc!.addCandidate(RTCIceCandidate(data['candidate'], data['sdpMid'], data['sdpMLineIndex'])); } } });
+      callDoc.collection('candidates').snapshots().listen((snap) { for (var change in snap.docChanges) { if (change.type == DocumentChangeType.added) { var data = change.doc.data(); if (data != null) { _pc!.addCandidate(RTCIceCandidate(data['candidate'] as String?, data['sdpMid'] as String?, data['sdpMLineIndex'] as int?)); } } } });
     } catch (e) { debugPrint('WebRTC error: $e'); }
   }
   @override
