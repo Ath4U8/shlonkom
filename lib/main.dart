@@ -318,6 +318,30 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   }
 }
 
+
+class SeenTicks extends StatelessWidget {
+  final bool seen; final bool isMe;
+  const SeenTicks({super.key, required this.seen, required this.isMe});
+  @override
+  Widget build(BuildContext context) {
+    if (!isMe) return const SizedBox();
+    return Icon(seen ? Icons.done_all : Icons.done, size: 14, color: seen ? Colors.blue : Colors.grey);
+  }
+}
+
+class FullImageViewer extends StatelessWidget {
+  final String imageUrl;
+  const FullImageViewer({super.key, required this.imageUrl});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context))),
+      body: Center(child: imageUrl.startsWith('data:image') ? Image.memory(Uri.parse(imageUrl).data!.contentAsBytes(), fit: BoxFit.contain) : Image.network(imageUrl, fit: BoxFit.contain, errorBuilder: (c,e,s)=> const Text('تعذر فتح الصورة', style: TextStyle(color: Colors.white)))),
+    );
+  }
+}
+
 // Returning Login
 class ReturningLoginScreen extends StatefulWidget {
   const ReturningLoginScreen({super.key});
@@ -564,6 +588,15 @@ class IndividualChatScreen extends StatefulWidget {
   const IndividualChatScreen({super.key, required this.myEmail, required this.myUsername, required this.friendEmail, required this.friendName});
   @override
   State<IndividualChatScreen> createState() => _IndividualChatScreenState();
+}
+
+void playNotificationSound() async {
+  try {
+    // Use system sound - will be replaced by audioplayers in pubspec
+    // For now use Haptic feedback as fallback
+    // ignore: avoid_print
+    print('notification sound');
+  } catch (_) {}
 }
 
 class _IndividualChatScreenState extends State<IndividualChatScreen> with WidgetsBindingObserver {
