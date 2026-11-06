@@ -296,7 +296,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(automaticallyImplyLeading: false, title: const Text('إعداد الملف الشخصي'), backgroundColor: const Color(0xFF0F5132), foregroundColor: Colors.white),
-      body: SingleChildScrollView(padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0), child: Column(children: [
+      body: Container(
+        decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('assets/images/login_bg.png'), fit: BoxFit.cover)),
+        child: Container(
+          color: Colors.white.withOpacity(0.85),
+          child: SingleChildScrollView(padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0), child: Column(children: [
         GestureDetector(onTap: _pickImage, child: Stack(alignment: Alignment.bottomRight, children: [
           CircleAvatar(radius: 60, backgroundColor: const Color(0xFF0F5132).withOpacity(0.1), backgroundImage: _selectedImage != null ? FileImage(_selectedImage!) : null, child: _selectedImage == null ? const Icon(Icons.person, size: 80, color: Color(0xFF0F5132)) : null),
           const CircleAvatar(radius: 20, backgroundColor: Color(0xFF0F5132), child: Icon(Icons.camera_alt, size: 20, color: Colors.white))
@@ -308,6 +312,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
         const SizedBox(height: 30),
         SizedBox(width: double.infinity, height: 50, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F5132), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))), onPressed: _isLoading ? null : _saveProfileAndProceed, child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('حفظ والدخول', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)))),
       ])),
+        ),
+      ),
     );
   }
 }
@@ -480,7 +486,7 @@ class _MainChatHomeScreenState extends State<MainChatHomeScreen> {
           const Align(alignment: Alignment.centerRight, child: Text('المحادثات السابقة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
           const SizedBox(height: 10),
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('chats').where('participants', arrayContains: widget.myEmail).orderBy('lastTimestamp', descending: true).snapshots(),
+            stream: FirebaseFirestore.instance.collection('chats').where('participants', arrayContains: widget.myEmail).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return Text('خطأ: ${snapshot.error}', style: const TextStyle(color: Colors.red));
@@ -735,10 +741,12 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
 
 // Voice Call Screen - REAL FREE CALL
 class VoiceCallScreen extends StatefulWidget {
-  final String myEmail, myUsername, friendEmail, friendName, chatDocId;
+  final String myEmail;
+  final String myUsername;
+  final String friendEmail, friendName, chatDocId;
   final bool isIncoming;
   final String? incomingCallId;
-  const VoiceCallScreen({super.key, required this.myEmail, required this.myUsername, required this.friendEmail, required this.friendName, required this.chatDocId, this.isIncoming = false, this.incomingCallId});
+  const VoiceCallScreen({super.key, required this.myEmail, this.myUsername = '', required this.friendEmail, required this.friendName, required this.chatDocId, this.isIncoming = false, this.incomingCallId});
   @override
   State<VoiceCallScreen> createState() => _VoiceCallScreenState();
 }
@@ -803,7 +811,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
       final callRef = FirebaseFirestore.instance.collection('calls').doc();
       _callDocId = callRef.id;
-      await callRef.set({'caller': widget.myEmail, 'callee': widget.friendEmail, 'callerName': widget.myUsername, 'calleeName': widget.friendName, 'status': 'ringing', 'timestamp': FieldValue.serverTimestamp(), 'chatDocId': widget.chatDocId});
+      await callRef.set({'caller': widget.myEmail, 'callee': widget.friendEmail, 'callerName': widget.myEmail.split('@')[0], 'calleeName': widget.friendName, 'status': 'ringing', 'timestamp': FieldValue.serverTimestamp(), 'chatDocId': widget.chatDocId});
       final offer = await _peerConnection!.createOffer();
       await _peerConnection!.setLocalDescription(offer);
       await callRef.update({'offer': offer.toMap()});
