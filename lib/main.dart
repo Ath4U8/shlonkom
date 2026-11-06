@@ -87,9 +87,22 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   final TextEditingController _fullNameController = TextEditingController(); final TextEditingController _usernameController = TextEditingController(); String? _permanentPersonalPin; File? _selectedImage; bool _isLoading = false;
   @override
   void initState() { super.initState(); _usernameController.text = widget.email.split('@')[0]; _initializePermanentPin(); }
-  Future<void> _initializePermanentPin() async { final docRef = FirebaseFirestore.instance.collection('users').doc(widget.email); final doc = await docRef.get(); if (doc.exists && doc.data()?['personalPin'] != null) { setState(() { _permanentPersonalPin = doc.data()?['personalPin']; }); } else { final newPin = _generateUniquePin(); setState(() { _permanentPersonalPin = newPin; }); } }
+  Future<void> _initializePermanentPin() async {
+    // ولد رقم فوراً حتى لا تعلك الصفحة
+    final newPin = _generateUniquePin();
+    setState(() { _permanentPersonalPin = newPin; });
+    try {
+      final docRef = FirebaseFirestore.instance.collection('users').doc(widget.email);
+      final doc = await docRef.get();
+      if (doc.exists && doc.data()?['personalPin'] != null) {
+        if (mounted) setState(() { _permanentPersonalPin = doc.data()?['personalPin']; });
+      }
+    } catch (e) {
+      debugPrint('Pin load error: $e');
+    }
+  }
   Future<void> _pickImage() async { final picker = ImagePicker(); final picked = await picker.pickImage(source: ImageSource.gallery); if (picked != null) { setState(() { _selectedImage = File(picked.path); }); } }
-  void _saveProfileAndProceed() async { final fullName = _fullNameController.text.trim(); final username = _usernameController.text.trim(); if (fullName.isEmpty || username.isEmpty || _permanentPersonalPin == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى ملء جميع الحقول المطلوبة'))); return; } setState(() => _isLoading = true); try { await FirebaseFirestore.instance.collection('users').doc(widget.email).set({'email': widget.email, 'fullName': fullName, 'username': username, 'personalPin': _permanentPersonalPin, 'createdAt': FieldValue.serverTimestamp(), 'isOnline': true}, SetOptions(merge: true)); final prefs = await SharedPreferences.getInstance(); await prefs.setString('saved_email', widget.email); await prefs.setString('saved_username', username); await prefs.setString('saved_personal_pin', _permanentPersonalPin!); await prefs.setInt('last_active_time', DateTime.now().millisecondsSinceEpoch); if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => MainChatHomeScreen(myEmail: widget.email, myUsername: username, myPersonalPin: _permanentPersonalPin!)), (route) => false); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء حفظ البيانات: $e'))); } finally { if (mounted) setState(() => _isLoading = false); } }
+  void _saveProfileAndProceed() async { final fullName = _fullNameController.text.trim(); final username = _usernameController.text.trim(); if (fullName.isEmpty || username.isEmpty || _permanentPersonalPin == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('يرجى ملء جميع الحقول المطلوبة'))); return; } setState(() => _isLoading = true); try { try { await FirebaseFirestore.instance.collection('users').doc(widget.email).set({'email': widget.email, 'fullName': fullName, 'username': username, 'personalPin': _permanentPersonalPin, 'createdAt': FieldValue.serverTimestamp(), 'isOnline': true}, SetOptions(merge: true)); } catch (e) { debugPrint('Save error but continue: $e'); } final prefs = await SharedPreferences.getInstance(); await prefs.setString('saved_email', widget.email); await prefs.setString('saved_username', username); await prefs.setString('saved_personal_pin', _permanentPersonalPin!); await prefs.setInt('last_active_time', DateTime.now().millisecondsSinceEpoch); if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => MainChatHomeScreen(myEmail: widget.email, myUsername: username, myPersonalPin: _permanentPersonalPin!)), (route) => false); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ أثناء حفظ البيانات: $e'))); } finally { if (mounted) setState(() => _isLoading = false); } }
   @override
   Widget build(BuildContext context) {
     return Scaffold(backgroundColor: Colors.white, appBar: AppBar(automaticallyImplyLeading: false, title: const Text('إعداد الملف الشخصي', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold, fontSize: 18)), backgroundColor: Colors.white, elevation: 0, centerTitle: true),
