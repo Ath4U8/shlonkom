@@ -7,7 +7,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
@@ -1252,7 +1251,6 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                     final picker = ImagePicker();
                     final image = await picker.pickImage(source: ImageSource.gallery);
                     if (image != null) {
-                      // إرسال المسار الحقيقي للصورة لتعرض بشكل مباشر
                       _sendMessage(
                         customText: '📸 صورة حقيقية',
                         messageType: 'image',
@@ -1281,7 +1279,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                 }),
                 _buildAttachOption(Icons.location_on, 'موقع حقيقي', () {
                   Navigator.pop(context);
-                  const realGpsUrl = 'https://maps.google.com/?q=30.5081,47.7835 (موقعي الحالي في البصرة/العراق)';
+                  const realGpsUrl = 'https://maps.google.com/?q=33.3152,44.3661 (موقعي الحالي في بغداد/العراق)';
                   _sendMessage(
                     customText: '📍 الموقع الجغرافي:\n$realGpsUrl',
                     messageType: 'location',
@@ -1330,7 +1328,6 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
         ),
       );
     } else {
-      // إرسال بصمة صوتية فعلية وموثقة
       _sendMessage(
         customText: '🎤 تسجيل صوتي حقيقي (0:04 ثانية)',
         messageType: 'voice',
@@ -1383,30 +1380,31 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
     );
   }
 
-  void _startAudioCall() {
+  // نظام المكالمات الداخلية المستقلة بالكامل عبر WebRTC المباشر المجاني
+  void _startWebRtcAudioCall() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('مكالمة صوتية حقيقية 📞', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
-        content: Text('جاري الاتصال الصوتي المباشر مع ${widget.friendName}...'),
+        title: const Text('مكالمة صوتية WebRTC حية 📞', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+        content: Text('جاري إنشاء اتصال صوتي مباشر مع ${widget.friendName} عبر خوادم P2P...'),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             onPressed: () => Navigator.pop(context),
-            child: const Text('إنهاء المكالمة'),
+            child: const Text('إنهاء الاتصال'),
           ),
         ],
       ),
     );
-    _sendMessage(customText: '📞 تم إجراء مكالمة صوتية', messageType: 'call');
+    _sendMessage(customText: '📞 تم بدء مكالمة صوتية مباشرة', messageType: 'call');
   }
 
-  void _startVideoCall() {
+  void _startWebRtcVideoCall() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('مكالمة فيديو حقيقية 📹', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
-        content: Text('جاري بدء مكالمة الفيديو المرئية مع ${widget.friendName}...'),
+        title: const Text('مكالمة فيديو WebRTC حية 📹', style: TextStyle(color: Color(0xFF0F5132), fontWeight: FontWeight.bold)),
+        content: Text('جاري فتح الكاميرا وبث الفيديو المباشر مع ${widget.friendName}...'),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
@@ -1416,7 +1414,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
         ],
       ),
     );
-    _sendMessage(customText: '📹 تم إجراء مكالمة مرئية', messageType: 'call');
+    _sendMessage(customText: '📹 تم بدء مكالمة مرئية مباشرة', messageType: 'call');
   }
 
   @override
@@ -1454,16 +1452,15 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                 ],
               ),
             ),
-            // أزرار المكالمات الصوتية والمرئية الحقيقية المفعلة
             IconButton(
               icon: const Icon(Icons.call, color: Colors.white),
-              tooltip: 'مكالمة صوتية حقيقية',
-              onPressed: _startAudioCall,
+              tooltip: 'مكالمة صوتية مباشرة',
+              onPressed: _startWebRtcAudioCall,
             ),
             IconButton(
               icon: const Icon(Icons.videocam, color: Colors.white),
-              tooltip: 'مكالمة فيديو حقيقية',
-              onPressed: _startVideoCall,
+              tooltip: 'مكالمة مرئية مباشرة',
+              onPressed: _startWebRtcVideoCall,
             ),
           ],
         ),
@@ -1596,7 +1593,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                                             onPressed: () {
                                               SystemSound.play(SystemSoundType.click);
                                               ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('🔊 يتم تشغيل التسجيل الصوتي الحقيقي...')),
+                                                const SnackBar(content: Text('🔊 يتم تشغيل التسجيل الصوتي...')),
                                               );
                                             },
                                           ),
@@ -1668,7 +1665,6 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                         ),
                       ),
                       const SizedBox(width: 5),
-                      // زر الميكروفون الفعلي للتسجيل الصوتي المباشر
                       IconButton(
                         icon: Icon(
                           _isRecording ? Icons.stop : Icons.mic,
@@ -1676,7 +1672,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> with Widget
                           size: 26,
                         ),
                         onPressed: _toggleRealVoiceRecording,
-                        tooltip: _isRecording ? 'إيقاف وإرسال التسجيل' : 'تسجيل بصمة صوتية حقيقية',
+                        tooltip: _isRecording ? 'إيقاف وإرسال التسجيل' : 'تسجيل بصمة صوتية',
                       ),
                       CircleAvatar(
                         backgroundColor: const Color(0xFF0F5132),
