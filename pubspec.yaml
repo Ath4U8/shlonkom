@@ -1,17 +1,17 @@
 name: shlonkom
 description: اول تطبيق مراسلة عراقي - شلونكم
 publish_to: 'none'
-version: 1.0.0+2
+version: 1.0.0+3
 environment:
   sdk: '>=3.2.0 <4.0.0'
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
-  firebase_core: ^2.24.0
-  firebase_auth: ^4.15.0
-  cloud_firestore: ^4.15.0
-  firebase_storage: ^11.5.0
+  firebase_core: ^2.32.0
+  firebase_auth: ^4.20.0
+  cloud_firestore: ^4.17.3
+  firebase_storage: ^11.7.0
   image_picker: ^1.0.7
   shared_preferences: ^2.2.2
   uuid: ^4.3.3
