@@ -1,5 +1,5 @@
-name: shlonkom
-description: Shlonkom Chat App
+name: shlonkom_iq
+description: Shlonkom IQ - Codek Huwa Hawiyatak - Free
 publish_to: 'none'
 version: 1.0.0+1
 environment:
@@ -10,8 +10,11 @@ dependencies:
   firebase_core: ^2.24.2
   firebase_auth: ^4.15.3
   cloud_firestore: ^4.13.6
-  image_picker: ^1.0.7
   shared_preferences: ^2.2.2
+  crypto: ^3.0.3
+  qr_flutter: ^4.1.0
+  http: ^1.1.0
+  device_info_plus: ^9.1.1
   flutter_launcher_icons: ^0.13.1
 dev_dependencies:
   flutter_test:
