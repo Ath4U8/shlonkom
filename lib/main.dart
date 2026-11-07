@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -11,12 +10,7 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // لو Firebase فشل، التطبيق يشتغل عادي وما يعلق على الشعار
-  try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  } catch (e) {
-    print('Firebase init failed, continuing without it: $e');
-  }
+  try { await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform); } catch (e) { print('Firebase init failed: $e'); }
   runApp(const ShlonkomApp());
 }
 
@@ -357,7 +351,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     var uid = FirebaseAuth.instance.currentUser!.uid;
-    return Scaffold(backgroundColor: kBg, appBar: AppBar(backgroundColor: kCard, leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)), title: StreamBuilder<DocumentSnapshot>(stream: FirebaseFirestore.instance.collection('users').doc(widget.otherId).snapshots(), builder: (c, s) { var d = s.data?.data() as Map<String, dynamic>? ?? {}; bool on = d['isOnline'] == true; return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(widget.otherName, style: const TextStyle(color: Colors.white)), Text(on ? 'متصل الآن' : 'آخر ظهور', style: const TextStyle(color: Colors.white70, fontSize: 12))]); }))),
+    return Scaffold(backgroundColor: kBg, appBar: AppBar(backgroundColor: kCard, leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)), title: Text(widget.otherName, style: const TextStyle(color: Colors.white))),
       body: Column(children: [
         Expanded(child: StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('chats').doc(widget.chatId).collection('messages').orderBy('time').snapshots(), builder: (ctx, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: kAccent));
