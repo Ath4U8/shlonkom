@@ -262,6 +262,7 @@ class _RegisterIQState extends State<RegisterIQ> {
           'deviceHash': deviceHash,
           'ipHash': ipHash,
           'recoveryHash': simpleHash(recoveryText),
+          'activeDeviceHash': deviceHash,
           'createdAt': FieldValue.serverTimestamp(),
           'plan': 'free',
         });
@@ -374,6 +375,9 @@ class _RestoreIQState extends State<RestoreIQ> {
     final vpn = await checkVpnAndWarn(context);
     if (vpn) return;
     if (_keyCtrl.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اكتب مفتاح الاستعادة 12 كلمة'))); return; }
+    // تحذير النقل - الجهاز القديم راح ينغلق
+    final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('نقل الكود؟'), content: const Text('هذا راح ينقل كودك لهذا الجهاز - والجهاز القديم راح ينغلق تلقائيا وما يكدر يستخدم الكود بعد! متأكد؟'), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('لا - الغي')), ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text('اي - انقل كودي', style: TextStyle(color: Colors.white)))]));
+    if (confirm != true) return;
     setState(() => _loading = true);
     try {
       final key = _keyCtrl.text.trim();
@@ -382,10 +386,16 @@ class _RestoreIQState extends State<RestoreIQ> {
         final q = await FirebaseFirestore.instance.collection('iq_codes').where('recoveryHash', isEqualTo: hash).limit(1).get();
         if (q.docs.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('المفتاح غلط - تأكد من الكلمات'))); setState(() => _loading = false); return; }
         final data = q.docs.first.data();
+        final newDeviceHash = await getDeviceHash();
+        // نقل الملكية للجهاز الجديد - القديم ينطرد
+        try {
+          await FirebaseFirestore.instance.collection('iq_codes').doc(data['code']).update({'activeDeviceHash': newDeviceHash, 'transferredAt': FieldValue.serverTimestamp()});
+        } catch (_) {}
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('iq_code', data['code'] ?? '');
         await prefs.setString('iq_user', data['username'] ?? '');
         await prefs.setString('iq_recovery', key);
+        await prefs.setString('iq_deviceHash', newDeviceHash);
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeIQ()), (r) => false);
         return;
@@ -424,9 +434,31 @@ class _HomeIQState extends State<HomeIQ> {
   void initState() { super.initState(); _load(); }
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() { _code = prefs.getString('iq_code') ?? ''; _user = prefs.getString('iq_user') ?? ''; });
+    final localCode = prefs.getString('iq_code') ?? '';
+    final localDevice = prefs.getString('iq_deviceHash') ?? '';
+    setState(() { _code = localCode; _user = prefs.getString('iq_user') ?? ''; });
     final vpn = await isVpnActive();
     setState(() => _vpn = vpn);
+    // فحص الجهاز الفعال - اذا الكود اننقل لجهاز جديد - هذا الجهاز ينطرد
+    if (localCode.isNotEmpty && localDevice.isNotEmpty) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('iq_codes').doc(localCode).get();
+        if (doc.exists) {
+          final active = doc.data()?['activeDeviceHash'] ?? '';
+          if (active.isNotEmpty && active != localDevice) {
+            if (!mounted) return;
+            await showDialog(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(title: const Text('تم نقل كودك!'), content: const Text('كودك اننقل لجهاز جديد - هذا الجهاز انغلق للحماية. اذا مو انت - راجع مفتاح الاستعادة فورا!'), actions: [ElevatedButton(onPressed: () => Navigator.pop(ctx), child: const Text('فهمت'))]));
+            final p2 = await SharedPreferences.getInstance();
+            await p2.remove('iq_code');
+            await p2.remove('iq_user');
+            await p2.remove('iq_recovery');
+            if (!mounted) return;
+            Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const WelcomeIQ()), (r) => false);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
   }
   void _generateOtp() {
     final rnd = Random();
