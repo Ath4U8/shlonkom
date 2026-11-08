@@ -166,6 +166,20 @@ Widget bigButton(String text, VoidCallback? onPressed, {Color color = kBlue, boo
       ),
     );
 
+/// اسم المصمم
+Widget designedBy() => const Padding(
+      padding: EdgeInsets.symmetric(vertical: 16),
+      child: Text(
+        'Designed by: Atheer Sami',
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54, letterSpacing: 0.5),
+      ),
+    );
+
+/// شريط اسم المصمم اسفل كل صفحة
+Widget designedByBar() => SafeArea(top: false, child: designedBy());
+
 Widget codeBox(String code) => Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -221,6 +235,7 @@ class ErrorIQ extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: designedByBar(),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Center(child: Text('تعذر الاتصال بـ Firebase:\n$error', textAlign: TextAlign.center)),
@@ -259,8 +274,9 @@ class _SplashIQState extends State<SplashIQ> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFFEAF6FF),
+    return Scaffold(
+      bottomNavigationBar: designedByBar(),
+      backgroundColor: const Color(0xFFEAF6FF),
       body: Center(
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.shield, color: kBlue, size: 90),
@@ -282,6 +298,7 @@ class WelcomeIQ extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: designedByBar(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(children: [
@@ -384,6 +401,7 @@ class _RegisterIQState extends State<RegisterIQ> {
     final match = _pass2.text.isNotEmpty && _pass.text == _pass2.text;
     final mismatch = _pass2.text.isNotEmpty && _pass.text != _pass2.text;
     return Scaffold(
+      bottomNavigationBar: designedByBar(),
       appBar: AppBar(
         title: const Text('انشاء كودي - شلونكم IQ'),
         backgroundColor: kBlue,
@@ -451,6 +469,7 @@ class ShowCodeIQ extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: designedByBar(),
       appBar: AppBar(
         title: const Text('كودك - شلونكم IQ'),
         backgroundColor: kBlue,
@@ -524,6 +543,7 @@ class _LoginIQState extends State<LoginIQ> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: designedByBar(),
       appBar: AppBar(title: const Text('تسجيل دخول'), backgroundColor: kBlue, foregroundColor: Colors.white),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -723,6 +743,7 @@ class _HomeIQState extends State<HomeIQ> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: designedByBar(),
       appBar: AppBar(
         title: const Text('شلونكم - IQ'),
         backgroundColor: kBlue,
@@ -809,6 +830,7 @@ class _SearchIQState extends State<SearchIQ> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: designedByBar(),
       appBar: AppBar(
         title: const Text('ابحث عن صديق'),
         backgroundColor: kBlue,
