@@ -2,23 +2,47 @@ name: Build APK
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GRADLE_OPTS: -Dorg.gradle.internal.http.connectionTimeout=120000 -Dorg.gradle.internal.http.socketTimeout=120000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.3'
           channel: 'stable'
+          cache: true
       - run: rm -f pubspec.lock
-      - run: flutter pub get
+      - name: Get packages (retry once)
+        run: flutter pub get || (sleep 20 && flutter pub get)
       - run: dart run flutter_launcher_icons || echo "icon generation skipped"
-      - run: flutter build apk --release
+      - name: Build APK (retry on network errors only)
+        run: |
+          set +e
+          for i in 1 2 3 4 5; do
+            echo "=== Build attempt $i ==="
+            flutter build apk --release 2>&1 | tee build.log
+            if [ "${PIPESTATUS[0]}" -eq 0 ]; then
+              exit 0
+            fi
+            if grep -qiE "Server returned HTTP|status code 50[0-9]|Gateway|Could not (GET|download|resolve)|timed out|Connection reset|Read timed out" build.log; then
+              echo "Network error from GitHub/Maven. Retrying in 45s..."
+              sleep 45
+            else
+              echo "Real build error - not retrying."
+              exit 1
+            fi
+          done
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: app-release
