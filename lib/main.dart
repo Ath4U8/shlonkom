@@ -51,7 +51,12 @@ Future<String> _createCodeFor(String uid, String deviceId) async {
   for (var i = 0; i < 5; i++) {
     final code = _randomCode10();
     final batch = _db.batch();
-    batch.set(_db.doc('codes/$code'), {'uid': uid, 'createdAt': FieldValue.serverTimestamp()});
+    final username = (_auth.currentUser?.email ?? '').split('@').first;
+    batch.set(_db.doc('codes/$code'), {
+      'uid': uid,
+      'username': username,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
     batch.set(_db.doc('users/$uid'), {'code': code, 'activeDeviceId': deviceId});
     try {
       await batch.commit();
@@ -91,6 +96,14 @@ Future<String> loginUser({required String username, required String password}) a
   if (snap.exists && snap.data()?['code'] != null) {
     code = snap.data()!['code'] as String;
     await ref.update({'activeDeviceId': deviceId}); // ينقل الجهاز الفعال لهذا الجهاز
+    // حسابات قديمة: نضيف اليوزر نيم حتى يكدر الناس يلاقونك بالبحث
+    try {
+      final cref = _db.doc('codes/$code');
+      final csnap = await cref.get();
+      if (csnap.exists && csnap.data()?['username'] == null) {
+        await cref.update({'username': username.trim().toLowerCase()});
+      }
+    } catch (_) {}
   } else {
     code = await _createCodeFor(uid, deviceId); // حساب ناقص - نكمله
   }
@@ -656,6 +669,117 @@ class _HomeIQState extends State<HomeIQ> {
             icon: const Icon(Icons.copy),
             label: const Text('نسخ الكود'),
           ),
+          const SizedBox(height: 20),
+          bigButton('ابحث عن صديق بالكود', () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchIQ()));
+          }),
+        ]),
+      ),
+    );
+  }
+}
+
+// ============================================================
+//  البحث بالكود
+// ============================================================
+class SearchIQ extends StatefulWidget {
+  const SearchIQ({super.key});
+  @override
+  State<SearchIQ> createState() => _SearchIQState();
+}
+
+class _SearchIQState extends State<SearchIQ> {
+  final _ctrl = TextEditingController();
+  bool _loading = false;
+  String? _foundCode;
+  String? _foundName;
+  String? _message;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final code = _ctrl.text.trim();
+    setState(() {
+      _foundCode = null;
+      _foundName = null;
+      _message = null;
+    });
+    if (!RegExp(r'^[1-9][0-9]{9}$').hasMatch(code)) {
+      setState(() => _message = 'الكود لازم 10 ارقام وما يبدأ بصفر');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final snap = await _db.doc('codes/$code').get();
+      if (!snap.exists) {
+        _message = 'ما اكو احد بهذا الكود';
+      } else {
+        _foundCode = code;
+        _foundName = (snap.data()?['username'] as String?) ?? '';
+      }
+    } catch (e) {
+      _message = friendlyError(e);
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('ابحث عن صديق'),
+        backgroundColor: kBlue,
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(children: [
+          const Icon(Icons.search, size: 60, color: kBlue),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _ctrl,
+            keyboardType: TextInputType.number,
+            maxLength: 10,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: deco('كود الصديق', hint: '10 ارقام'),
+          ),
+          const SizedBox(height: 8),
+          bigButton('ابحث', _loading ? null : _search, loading: _loading),
+          const SizedBox(height: 20),
+          if (_message != null)
+            Text(_message!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          if (_foundCode != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: kGreen),
+              ),
+              child: Column(children: [
+                const Icon(Icons.person, size: 50, color: kDarkBlue),
+                const SizedBox(height: 8),
+                Text(
+                  (_foundName == null || _foundName!.isEmpty) ? 'مستخدم شلونكم' : _foundName!,
+                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: kDarkBlue),
+                ),
+                const SizedBox(height: 4),
+                Text(_foundCode!, style: const TextStyle(fontSize: 18, letterSpacing: 2)),
+                if (_foundName == null || _foundName!.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Text('هذا الحساب ما أضاف اسمه بعد - يظهر بعد ما يسجل دخول بالنسخة الجديدة',
+                        textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  ),
+              ]),
+            ),
         ]),
       ),
     );
