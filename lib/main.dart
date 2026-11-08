@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show HttpClient, SocketException;
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,6 +17,9 @@ const Color kBlue = Color(0xFF0B4ED8);
 const Color kDarkBlue = Color(0xFF0A2E8A);
 const Color kGreen = Color(0xFF00C950);
 
+/// سيرفر شلونكم (Cloudflare Worker)
+const String kApiBase = 'https://shlonkum-iq.a00072288.workers.dev';
+
 const FlutterSecureStorage _storage = FlutterSecureStorage();
 FirebaseAuth get _auth => FirebaseAuth.instance;
 FirebaseFirestore get _db => FirebaseFirestore.instance;
@@ -27,14 +32,6 @@ final RegExp usernameRe = RegExp(r'^[a-z0-9._-]{3,20}$');
 // ============================================================
 String _emailFor(String username) => '${username.trim().toLowerCase()}@shlonkum.app';
 
-/// كود 10 ارقام عشوائي - ما يبدأ بصفر - ما يعتمد على الباسورد ولا الجهاز
-String _randomCode10() {
-  final rnd = Random.secure();
-  final first = 1 + rnd.nextInt(9);
-  final rest = List.generate(9, (_) => rnd.nextInt(10)).join();
-  return '$first$rest';
-}
-
 /// معرّف جهاز عشوائي - ينولد مرة وحدة ويتخزن بشكل آمن
 Future<String> getDeviceId() async {
   var id = await _storage.read(key: 'device_id');
@@ -46,27 +43,45 @@ Future<String> getDeviceId() async {
   return id;
 }
 
-/// يولد كود فريد ويربطه بالحساب (يتنفذ مرة وحدة بعمر الحساب)
-Future<String> _createCodeFor(String uid, String deviceId) async {
-  for (var i = 0; i < 5; i++) {
-    final code = _randomCode10();
-    final batch = _db.batch();
-    final username = (_auth.currentUser?.email ?? '').split('@').first;
-    batch.set(_db.doc('codes/$code'), {
-      'uid': uid,
-      'username': username,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    batch.set(_db.doc('users/$uid'), {'code': code, 'activeDeviceId': deviceId});
+/// نداء السيرفر مع اثبات الهوية (Firebase ID token)
+Future<Map<String, dynamic>> _api(String path, Map<String, dynamic> body) async {
+  final user = _auth.currentUser;
+  if (user == null) throw Exception('سجّل دخول اول');
+  final token = await user.getIdToken();
+  if (token == null) throw Exception('سجّل دخول اول');
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+  try {
+    final req = await client.postUrl(Uri.parse('$kApiBase$path'));
+    req.headers.set('Content-Type', 'application/json');
+    req.headers.set('Authorization', 'Bearer $token');
+    req.add(utf8.encode(jsonEncode(body)));
+    final res = await req.close().timeout(const Duration(seconds: 20));
+    final text = await res.transform(utf8.decoder).join();
+    Map<String, dynamic> data;
     try {
-      await batch.commit();
-      return code;
-    } on FirebaseException catch (e) {
-      if (e.code != 'permission-denied') rethrow;
-      // الكود مأخوذ - نجرب كود ثاني
+      data = jsonDecode(text) as Map<String, dynamic>;
+    } catch (_) {
+      data = {};
     }
+    if (res.statusCode == 200) return data;
+    final err = data['error'];
+    if (err == 'rate_limited') throw Exception('محاولات كثيرة - انتظر شوية وجرب');
+    throw Exception('خطأ بالسيرفر (${res.statusCode}${err != null ? ' - $err' : ''})');
+  } on SocketException {
+    throw Exception('ما اكو انترنت');
+  } on TimeoutException {
+    throw Exception('السيرفر ما رد - جرب مرة ثانية');
+  } finally {
+    client.close();
   }
-  throw Exception('ما كدرنا ننشئ الكود - تأكد من قواعد Firestore وجرب مرة ثانية');
+}
+
+/// السيرفر ينشئ الكود (مرة وحدة لكل حساب) ويحدد الجهاز الفعال
+Future<String> _ensureCode(String deviceId) async {
+  final res = await _api('/ensure-code', {'deviceId': deviceId});
+  final code = res['code'];
+  if (code is! String || code.isEmpty) throw Exception('ما كدرنا ننشئ الكود - جرب مرة ثانية');
+  return code;
 }
 
 Future<String> registerUser({required String username, required String password}) async {
@@ -74,7 +89,7 @@ Future<String> registerUser({required String username, required String password}
   final deviceId = await getDeviceId();
   final cred = await _auth.createUserWithEmailAndPassword(email: _emailFor(name), password: password);
   try {
-    final code = await _createCodeFor(cred.user!.uid, deviceId);
+    final code = await _ensureCode(deviceId);
     await _storage.write(key: 'iq_code', value: code);
     return code;
   } catch (e) {
@@ -85,30 +100,18 @@ Future<String> registerUser({required String username, required String password}
 
 Future<String> loginUser({required String username, required String password}) async {
   final deviceId = await getDeviceId();
-  final cred = await _auth.signInWithEmailAndPassword(
+  await _auth.signInWithEmailAndPassword(
     email: _emailFor(username.trim().toLowerCase()),
     password: password,
   );
-  final uid = cred.user!.uid;
-  final ref = _db.doc('users/$uid');
-  final snap = await ref.get();
-  String code;
-  if (snap.exists && snap.data()?['code'] != null) {
-    code = snap.data()!['code'] as String;
-    await ref.update({'activeDeviceId': deviceId}); // ينقل الجهاز الفعال لهذا الجهاز
-    // حسابات قديمة: نضيف اليوزر نيم حتى يكدر الناس يلاقونك بالبحث
-    try {
-      final cref = _db.doc('codes/$code');
-      final csnap = await cref.get();
-      if (csnap.exists && csnap.data()?['username'] == null) {
-        await cref.update({'username': username.trim().toLowerCase()});
-      }
-    } catch (_) {}
-  } else {
-    code = await _createCodeFor(uid, deviceId); // حساب ناقص - نكمله
+  try {
+    final code = await _ensureCode(deviceId); // ينقل الجهاز الفعال لهذا الجهاز
+    await _storage.write(key: 'iq_code', value: code);
+    return code;
+  } catch (e) {
+    await _auth.signOut();
+    rethrow;
   }
-  await _storage.write(key: 'iq_code', value: code);
-  return code;
 }
 
 String friendlyError(Object e) {
@@ -390,8 +393,8 @@ class _RegisterIQState extends State<RegisterIQ> {
         padding: const EdgeInsets.all(20),
         child: Column(children: [
           const Icon(Icons.shield, size: 60, color: kBlue),
-          const Text('احصل على رقمك الشخصي', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const Text('بدون ايميل - بدون رقم تلفون',
+          const Text('انشئ هويتك العراقية', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text('بدون ايميل - بدون رقم تلفون - بس يوزر + باسورد',
               style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           TextField(controller: _user, decoration: deco('يوزر نيم', hint: 'مثال: haider_iraq')),
@@ -435,7 +438,7 @@ class _RegisterIQState extends State<RegisterIQ> {
             ),
           ),
           const SizedBox(height: 16),
-          bigButton('اختيار الرقم', _loading ? null : _create, loading: _loading),
+          bigButton('ولد كودي 10 ارقام - مجاني', _loading ? null : _create, loading: _loading),
         ]),
       ),
     );
@@ -555,6 +558,9 @@ class HomeIQ extends StatefulWidget {
 
 class _HomeIQState extends State<HomeIQ> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _sub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _reqSub;
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _requests = [];
+  Timer? _tick;
   String _code = '';
   String _user = '';
   bool _handled = false;
@@ -568,6 +574,8 @@ class _HomeIQState extends State<HomeIQ> {
   @override
   void dispose() {
     _sub?.cancel();
+    _reqSub?.cancel();
+    _tick?.cancel();
     super.dispose();
   }
 
@@ -592,6 +600,74 @@ class _HomeIQState extends State<HomeIQ> {
       await _storage.write(key: 'iq_code', value: code);
       if (mounted) setState(() => _code = code);
     }, onError: (_) {});
+
+    // طلبات الدخول من تطبيقات شبكة شلونكم
+    _reqSub = _db
+        .collection('loginRequests')
+        .where('uid', isEqualTo: u.uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((q) {
+      if (mounted) setState(() => _requests = q.docs);
+    }, onError: (_) {});
+    _tick = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  bool _alive(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+    final exp = d.data()['expiresAt'];
+    return exp is int && exp > DateTime.now().millisecondsSinceEpoch;
+  }
+
+  Future<void> _answer(QueryDocumentSnapshot<Map<String, dynamic>> d, bool approve) async {
+    try {
+      await d.reference.update({'status': approve ? 'approved' : 'denied'});
+      if (mounted) snack(context, approve ? 'تمت الموافقة' : 'تم الرفض');
+    } catch (e) {
+      if (mounted) snack(context, friendlyError(e));
+    }
+  }
+
+  Widget _requestCard(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+    final app = (d.data()['appName'] as String?) ?? 'تطبيق';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.orange),
+      ),
+      child: Column(children: [
+        const Icon(Icons.login, color: kDarkBlue, size: 36),
+        const SizedBox(height: 6),
+        Text('$app يريد الدخول بحسابك',
+            textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text('اذا مو انت اللي تحاول تدخل، اضغط رفض.',
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 13)),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () => _answer(d, true),
+              style: ElevatedButton.styleFrom(backgroundColor: kGreen),
+              child: const Text('موافق', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () => _answer(d, false),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('رفض', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ]),
+      ]),
+    );
   }
 
   void _goWelcome() {
@@ -603,6 +679,7 @@ class _HomeIQState extends State<HomeIQ> {
     if (_handled) return;
     _handled = true;
     await _sub?.cancel();
+    await _reqSub?.cancel();
     await _auth.signOut();
     await _storage.delete(key: 'iq_code');
     if (!mounted) return;
@@ -637,6 +714,7 @@ class _HomeIQState extends State<HomeIQ> {
     if (ok != true) return;
     _handled = true;
     await _sub?.cancel();
+    await _reqSub?.cancel();
     await _auth.signOut();
     await _storage.delete(key: 'iq_code');
     _goWelcome();
@@ -657,6 +735,7 @@ class _HomeIQState extends State<HomeIQ> {
           const SizedBox(height: 12),
           Text('اهلا $_user', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
+          for (final d in _requests.where(_alive)) _requestCard(d),
           codeBox(_code),
           const SizedBox(height: 12),
           TextButton.icon(
@@ -714,12 +793,12 @@ class _SearchIQState extends State<SearchIQ> {
     }
     setState(() => _loading = true);
     try {
-      final snap = await _db.doc('codes/$code').get();
-      if (!snap.exists) {
-        _message = 'ما اكو احد بهذا الكود';
-      } else {
+      final res = await _api('/search', {'code': code});
+      if (res['found'] == true) {
         _foundCode = code;
-        _foundName = (snap.data()?['username'] as String?) ?? '';
+        _foundName = (res['username'] as String?) ?? '';
+      } else {
+        _message = 'ما اكو احد بهذا الكود';
       }
     } catch (e) {
       _message = friendlyError(e);
