@@ -175,7 +175,11 @@ Object? _initError;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    }
+  } on FirebaseException catch (e) {
+    if (e.code != 'duplicate-app') _initError = e;
   } catch (e) {
     _initError = e;
   }
