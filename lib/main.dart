@@ -390,8 +390,8 @@ class _RegisterIQState extends State<RegisterIQ> {
         padding: const EdgeInsets.all(20),
         child: Column(children: [
           const Icon(Icons.shield, size: 60, color: kBlue),
-          const Text('انشئ هويتك العراقية', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const Text('بدون ايميل - بدون رقم تلفون - بس يوزر + باسورد',
+          const Text('احصل على رقمك الشخصي', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text('بدون ايميل - بدون رقم تلفون',
               style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           TextField(controller: _user, decoration: deco('يوزر نيم', hint: 'مثال: haider_iraq')),
@@ -435,7 +435,7 @@ class _RegisterIQState extends State<RegisterIQ> {
             ),
           ),
           const SizedBox(height: 16),
-          bigButton('ولد كودي 10 ارقام - مجاني', _loading ? null : _create, loading: _loading),
+          bigButton('اختيار الرقم', _loading ? null : _create, loading: _loading),
         ]),
       ),
     );
