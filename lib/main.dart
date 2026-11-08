@@ -93,7 +93,7 @@ Future<String> registerUser({required String username, required String password}
     await _storage.write(key: 'iq_code', value: code);
     return code;
   } catch (e) {
-    await cred.user!.delete(); // حتى ما يحترق اليوزر
+    await cred.user!.delete();
     rethrow;
   }
 }
@@ -105,7 +105,7 @@ Future<String> loginUser({required String username, required String password}) a
     password: password,
   );
   try {
-    final code = await _ensureCode(deviceId); // ينقل الجهاز الفعال لهذا الجهاز
+    final code = await _ensureCode(deviceId);
     await _storage.write(key: 'iq_code', value: code);
     return code;
   } catch (e) {
@@ -132,6 +132,10 @@ String friendlyError(Object e) {
         return 'محاولات كثيرة - انتظر شوية وجرب';
       case 'operation-not-allowed':
         return 'تسجيل الدخول بالايميل مو مفعل بـ Firebase';
+      case 'requires-recent-login':
+        return 'لازم تسجل دخول من جديد - سجل خروج ودخول وبعدين غير كلمة المرور';
+      case 'invalid-credential-recent':
+        return 'كلمة المرور القديمة غلط';
     }
     return 'خطأ بالدخول: ${e.code}';
   }
@@ -621,7 +625,6 @@ class _HomeIQState extends State<HomeIQ> {
       if (mounted) setState(() => _code = code);
     }, onError: (_) {});
 
-    // طلبات الدخول من تطبيقات شبكة شلونكم
     _reqSub = _db
         .collection('loginRequests')
         .where('uid', isEqualTo: u.uid)
@@ -748,7 +751,18 @@ class _HomeIQState extends State<HomeIQ> {
         title: const Text('شلونكم - IQ'),
         backgroundColor: kBlue,
         foregroundColor: Colors.white,
-        actions: [IconButton(icon: const Icon(Icons.logout), onPressed: _logout)],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => SettingsIQ(username: _user, code: _code)),
+              );
+            },
+          ),
+          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -773,6 +787,183 @@ class _HomeIQState extends State<HomeIQ> {
           bigButton('ابحث عن صديق بالكود', () {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchIQ()));
           }),
+        ]),
+      ),
+    );
+  }
+}
+
+// ============================================================
+//  صفحة الاعدادات - جديد
+// ============================================================
+class SettingsIQ extends StatefulWidget {
+  final String username;
+  final String code;
+  const SettingsIQ({super.key, required this.username, required this.code});
+  @override
+  State<SettingsIQ> createState() => _SettingsIQState();
+}
+
+class _SettingsIQState extends State<SettingsIQ> {
+  final _oldPass = TextEditingController();
+  final _newPass = TextEditingController();
+  final _newPass2 = TextEditingController();
+  bool _loading = false;
+  String _code = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _code = widget.code;
+    _loadCode();
+  }
+
+  Future<void> _loadCode() async {
+    if (_code.isNotEmpty) return;
+    final cached = await _storage.read(key: 'iq_code');
+    if (mounted && cached != null && cached.isNotEmpty) {
+      setState(() => _code = cached);
+    }
+  }
+
+  @override
+  void dispose() {
+    _oldPass.dispose();
+    _newPass.dispose();
+    _newPass2.dispose();
+    super.dispose();
+  }
+
+  bool _isStrong(String p) =>
+      p.length >= 8 && p.contains(RegExp(r'[0-9]')) && p.contains(RegExp(r'[A-Z]')) && p.contains(RegExp(r'[a-z]'));
+
+  Future<void> _changePassword() async {
+    if (_oldPass.text.isEmpty) {
+      snack(context, 'اكتب كلمة المرور القديمة');
+      return;
+    }
+    if (!_isStrong(_newPass.text)) {
+      snack(context, 'كلمة المرور الجديدة لازم 8 احرف + رقم + حرف كبير + حرف صغير');
+      return;
+    }
+    if (_newPass.text != _newPass2.text) {
+      snack(context, 'كلمتا المرور الجديدة مو متطابقات!');
+      return;
+    }
+    if (_oldPass.text == _newPass.text) {
+      snack(context, 'كلمة المرور الجديدة لازم تختلف عن القديمة');
+      return;
+    }
+    final user = _auth.currentUser;
+    if (user == null || user.email == null) {
+      snack(context, 'سجل دخول من جديد');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final cred = EmailAuthProvider.credential(email: user.email!, password: _oldPass.text);
+      await user.reauthenticateWithCredential(cred);
+      await user.updatePassword(_newPass.text);
+      _oldPass.clear();
+      _newPass.clear();
+      _newPass2.clear();
+      if (!mounted) return;
+      snack(context, 'تم تغيير كلمة المرور بنجاح');
+    } catch (e) {
+      if (mounted) snack(context, friendlyError(e));
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      bottomNavigationBar: designedByBar(),
+      appBar: AppBar(
+        title: const Text('الاعدادات'),
+        backgroundColor: kBlue,
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(children: [
+          const Icon(Icons.settings, size: 60, color: kBlue),
+          const SizedBox(height: 8),
+          const Text('اعدادات حسابك', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(children: [
+              Row(children: [
+                const Icon(Icons.person, color: kDarkBlue),
+                const SizedBox(width: 8),
+                const Text('اسم المستخدم:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(widget.username.isEmpty ? '...' : widget.username,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: kDarkBlue)),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                const Icon(Icons.tag, color: kDarkBlue),
+                const SizedBox(width: 8),
+                const Text('الكود:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(_code.isEmpty ? '...' : _code,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: kDarkBlue, letterSpacing: 1)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy, color: kBlue),
+                  onPressed: _code.isEmpty
+                      ? null
+                      : () {
+                          Clipboard.setData(ClipboardData(text: _code));
+                          snack(context, 'تم نسخ الكود');
+                        },
+                ),
+              ]),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          codeBox(_code),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: _code.isEmpty
+                ? null
+                : () {
+                    Clipboard.setData(ClipboardData(text: _code));
+                    snack(context, 'تم نسخ الكود');
+                  },
+            icon: const Icon(Icons.copy),
+            label: const Text('نسخ الكود'),
+          ),
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 8),
+          const Row(children: [
+            Icon(Icons.lock, color: kDarkBlue),
+            SizedBox(width: 8),
+            Text('تغيير كلمة المرور', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ]),
+          const SizedBox(height: 12),
+          TextField(controller: _oldPass, obscureText: true, decoration: deco('كلمة المرور القديمة')),
+          const SizedBox(height: 12),
+          TextField(controller: _newPass, obscureText: true, decoration: deco('كلمة المرور الجديدة', hint: '8 احرف + رقم + حرف كبير')),
+          const SizedBox(height: 12),
+          TextField(controller: _newPass2, obscureText: true, decoration: deco('تأكيد كلمة المرور الجديدة')),
+          const SizedBox(height: 16),
+          bigButton('تغيير كلمة المرور', _loading ? null : _changePassword, loading: _loading),
+          const SizedBox(height: 12),
+          const Text('التغيير فعلي عبر Firebase - راح تحتاج كلمة المرور الجديدة بالدخول الجاي.',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey)),
         ]),
       ),
     );
